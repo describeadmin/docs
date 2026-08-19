@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven settings 样例 —— 发布到 Maven Central 所需的凭据配置。
+
+  安装：复制到 ~/.m2/settings.xml（Windows：%USERPROFILE%\.m2\settings.xml），
+        替换下面两处占位符。
+
+  ⚠️ 本文件【只是模板】。填好真实值的 settings.xml 绝不能提交进任何仓库。
+     已在 .gitignore 中排除 settings.xml，但请自行再确认一次。
+
+  ---------------------------------------------------------------------------
+  凭据来源
+  ---------------------------------------------------------------------------
+  1. Central Portal User Token
+     生成：https://central.sonatype.com/usertoken → Generate User Token
+     ⚠️ 弹窗关闭后无法再次取回，请当场存入密码管理器。
+     生成结果是一对 username / password（不是你的登录账号密码）。
+
+  2. GPG 密钥
+     Maven Central 要求所有制品带 GPG 签名，且公钥必须已发布到公钥服务器。
+     查看密钥 ID：gpg --list-secret-keys --keyid-format=long
+
+  ---------------------------------------------------------------------------
+  验证发布链路（不真正发布正式版）
+  ---------------------------------------------------------------------------
+    mvn -f framework/pom.xml clean deploy -Prelease
+
+  父 POM 的 release profile 中 autoPublish=false，制品会先进入 Portal 的 draft 状态，
+  在网页上确认无误后再手动 Publish。链路稳定后可改为 automatic。
+
+  本地日常构建不需要本文件，也不需要 GPG：
+    mvn -f framework/pom.xml clean install
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <servers>
+    <!--
+      id 必须是 central —— 与父 POM 中
+      central-publishing-maven-plugin 的 <publishingServerId>central</publishingServerId> 对应。
+    -->
+    <server>
+      <id>central</id>
+      <username>${env.CENTRAL_TOKEN_USERNAME}</username>
+      <password>${env.CENTRAL_TOKEN_PASSWORD}</password>
+    </server>
+  </servers>
+
+  <profiles>
+    <profile>
+      <id>gpg</id>
+      <properties>
+        <!-- 你的 GPG 密钥 ID（long 格式）。留空则使用默认密钥。 -->
+        <gpg.keyname>${env.GPG_KEY_ID}</gpg.keyname>
+        <!--
+          从环境变量读取 passphrase，配合父 POM 中的 --pinentry-mode loopback，
+          避免交互式弹窗（CI 环境必需）。
+          切勿把 passphrase 明文写在本文件里。
+        -->
+        <gpg.passphrase>${env.GPG_PASSPHRASE}</gpg.passphrase>
+      </properties>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>gpg</activeProfile>
+  </activeProfiles>
+
+</settings>

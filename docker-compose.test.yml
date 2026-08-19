@@ -1,0 +1,99 @@
+# =============================================================================
+# describeadmin 自动化测试环境（develop_plan.md 5.1）
+#
+# 与开发环境的 compose 文件分离，避免互相干扰。
+#
+# 核心设计：MySQL 镜像版本可参数化，让 Tier 1 的两条线（5.7 / 8.4）跑同一套种子脚本。
+# 这是把方案 2.3.3 的支持矩阵承诺变成 CI 强制门禁的地方。
+#
+# 用法：
+#   MYSQL_IMAGE=mysql:5.7        docker compose -f docker-compose.test.yml up -d
+#   MYSQL_IMAGE=mysql:8.4        docker compose -f docker-compose.test.yml up -d
+#   docker compose -f docker-compose.test.yml down -v      # 清理，不留残留卷
+#
+# worktree 隔离（develop_plan.md 5.6 / 6.1）：
+#   由 scripts/dev.sh 计算 slug 后设置 COMPOSE_PROJECT_NAME 与 *_PORT，
+#   使多个 worktree 的测试环境互不冲突。
+# =============================================================================
+
+name: ${COMPOSE_PROJECT_NAME:-describeadmin-test}
+
+services:
+  mysql-test:
+    # 默认 5.7 —— 刻意让默认值是最严格的那条线。
+    # 如果默认给 8.4，本地跑通、CI 才在 5.7 上挂的情况会反复发生。
+    image: ${MYSQL_IMAGE:-mysql:5.7}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-describe_admin_test}
+      # 与 schema-rbac.sql 显式声明的字符集保持一致，避免服务器默认值干扰
+      MYSQL_ROOT_HOST: '%'
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+      # 5.7 默认 mysql_native_password，8.0+ 默认 caching_sha2_password。
+      # 这里不强制统一 —— 恰恰要让两条线保持各自的默认鉴权插件，
+      # 才能真实验证 Connector/J 8.2.0 对两种插件都可用（Walking Skeleton 假设 #2）。
+      - --lower-case-table-names=${MYSQL_LOWER_CASE_TABLE_NAMES:-0}
+    ports:
+      - "${MYSQL_TEST_PORT:-13306}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    tmpfs:
+      # 测试库跑在 tmpfs 上，重建更快，且天然不留残留数据
+      - /var/lib/mysql
+
+  redis-test:
+    image: ${REDIS_IMAGE:-redis:7-alpine}
+    ports:
+      - "${REDIS_TEST_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 一次性任务容器：建表 + 种子数据，完成即退出。
+  # 保证每次测试拿到确定、干净的初始状态（develop_plan.md 5.1）。
+  seed-job:
+    image: ${MYSQL_IMAGE:-mysql:5.7}
+    depends_on:
+      mysql-test:
+        condition: service_healthy
+    volumes:
+      - ../framework/framework-system-starter/src/main/resources/db:/sql:ro
+    environment:
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD:-root}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        echo "[seed-job] 目标镜像: ${MYSQL_IMAGE:-mysql:5.7}"
+        echo "[seed-job] 建表..."
+        mysql -h mysql-test -uroot --default-character-set=utf8mb4 ${MYSQL_DATABASE:-describe_admin_test} < /sql/schema-rbac.sql
+        echo "[seed-job] 种子数据..."
+        mysql -h mysql-test -uroot --default-character-set=utf8mb4 ${MYSQL_DATABASE:-describe_admin_test} < /sql/seed-rbac.sql
+        echo "[seed-job] 校验（计数）..."
+        mysql -h mysql-test -uroot -N -B --default-character-set=utf8mb4 ${MYSQL_DATABASE:-describe_admin_test} \
+          -e "SELECT CONCAT('users=', (SELECT COUNT(*) FROM sys_user), \
+                            ' roles=', (SELECT COUNT(*) FROM sys_role), \
+                            ' menus=', (SELECT COUNT(*) FROM sys_menu), \
+                            ' user_role=', (SELECT COUNT(*) FROM sys_user_role), \
+                            ' role_menu=', (SELECT COUNT(*) FROM sys_role_menu));"
+        # 值断言：计数校验发现不了字符集错误 —— 曾出现过 CLI 用默认字符集导入、
+        # 计数全对但中文全是乱码的情况。这里比对实际值，编码坏了就直接失败。
+        echo "[seed-job] 校验（中文完整性）..."
+        OK=$(mysql -h mysql-test -uroot -N -B --default-character-set=utf8mb4 ${MYSQL_DATABASE:-describe_admin_test} \
+          -e "SELECT COUNT(*) FROM sys_user WHERE username='admin' AND nickname='超级管理员' AND deleted=0;")
+        if [ "$$OK" != "1" ]; then
+          echo "[seed-job] ❌ 中文校验失败：sys_user.nickname 不等于预期值，字符集配置有误"
+          exit 1
+        fi
+        echo "[seed-job] ✅ 中文校验通过"
+        echo "[seed-job] 完成"
+    restart: "no"

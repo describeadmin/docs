@@ -1,0 +1,87 @@
+# describeadmin 仓库清单
+#
+# 本项目采用「按模块细分多仓」拓扑（见 develop_plan.md 3.1.1）。
+# 该文件是全部仓库的唯一登记处，供 scripts/clone-all.sh 与 AI Agent 获取完整上下文使用。
+#
+# 用法：./scripts/clone-all.sh          克隆/更新全部 status: active 的仓库
+#       ./scripts/clone-all.sh core     只处理 group: core
+
+org: describeadmin
+host: github.com
+# 全部仓库会被检出到本文件所在目录的同级，形成扁平的工作区布局
+
+repos:
+  # ---------- 元仓库 ----------
+  - name: describe-admin
+    group: meta
+    status: active
+    desc: 组织根仓库：开发方案、版本基线、编码规范、仓库清单与工具脚本
+    note: 即当前仓库，clone-all.sh 会跳过自身
+
+  # ---------- 后端框架核心 ----------
+  - name: framework
+    group: core
+    status: active
+    lang: java
+    desc: framework-bom + framework-core 全部必选模块
+    modules:
+      - framework-bom
+      - framework-common
+      - framework-web-starter
+      - framework-security-starter
+      - framework-mybatis-starter
+    publishes:
+      - io.github.describeadmin:framework-bom
+      - io.github.describeadmin:framework-common
+      - io.github.describeadmin:framework-web-starter
+      - io.github.describeadmin:framework-security-starter
+      - io.github.describeadmin:framework-mybatis-starter
+
+  # ---------- 代码生成器 ----------
+  - name: codegen
+    group: tools
+    status: planned
+    lang: java
+    desc: 代码生成器，以 YAML/DSL 为主输入（见 develop_plan.md 3.3.1）
+
+  - name: db-compat-checker
+    group: tools
+    status: planned
+    lang: java
+    desc: 数据库兼容性自检工具（见 develop_plan.md 2.3.3 / 5.5）
+
+  # ---------- 后端可选插件 ----------
+  - name: framework-auth-zhengwuding-starter
+    group: ext
+    status: planned
+    lang: java
+    spi: AuthProvider
+    desc: 浙政钉登录
+
+  - name: framework-notify-dingtalk-starter
+    group: ext
+    status: planned
+    lang: java
+    spi: NotifyChannel
+    desc: 钉钉消息推送
+
+  # ---------- 前端 ----------
+  - name: frontend
+    group: web
+    status: active
+    lang: ts
+    desc: 由 Vben Admin 5.7.0 一次性取材后独立演进（见 develop_plan.md 4.1）
+    upstream: https://github.com/vbenjs/vue-vben-admin
+    upstream_snapshot: v5.7.0
+    upstream_tracking: false   # 已与上游断开，不做 merge
+    publishes:
+      - "@describeadmin/ui"
+      - "@describeadmin/layouts"
+      - "@describeadmin/access"
+      - "@describeadmin/request"
+
+  # ---------- 样板 / 验证 ----------
+  - name: sample-app
+    group: sample
+    status: planned
+    desc: 业务模拟样板应用，用于发版前的兼容性测试门禁（见 develop_plan.md 第七章）
