@@ -87,7 +87,14 @@ repos:
     upstream: https://github.com/vbenjs/vue-vben-admin
     upstream_snapshot: v5.7.0
     upstream_tracking: false   # 已与上游断开，不做 merge
+    app: apps/admin            # 唯一应用，由官方 apps/web-ele 更名而来
+    note: |
+      packages/ 下全部代码的维护责任（含安全修复）自快照之日起由框架团队承担，
+      上游的更新与 bugfix 不会自动流入。见 NOTICE.md。
+      应用直连真实后端，不带 mock —— 上游的 apps/backend-mock 已删除。
     publishes:
+      # ⚠️ 尚未发布。这些包目前以源码形式（exports 指向 src/*.ts）在 workspace 内互引，
+      #    要真正 publish 还需补 tsdown 构建产物与 publishConfig，属未完成事项。
       - "@describeadmin/ui"
       - "@describeadmin/layouts"
       - "@describeadmin/access"
