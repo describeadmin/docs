@@ -648,3 +648,76 @@ Vben 5.7.0 实际是 `"pnpm": ">=10.0.0"` + `packageManager: "pnpm@10.33.4"`。
 顺带清掉 15 条已失效的 catalog 项（`ant-design-vue`、`naive-ui`、`tdesign-vue-next`、
 `vitepress` 系、`h3` / `jsonwebtoken` / `@faker-js/faker` 等）——
 对应的包在取材时就删了，catalog 里的声明成了死条目，`pnpm/yaml-no-unused-catalog-item` 会报。
+
+### 第七轮（codegen v2：补齐前端生成，闭合「代码 + 验收用例」）
+
+#### 补上的是哪一半
+
+codegen v1 产出的测试 Spec 断言的是 `[data-testid="xxx-add-btn"]` 这类选择器，
+而**页面没人生成**——那份 Spec 按定义就是跑不起来的。
+「代码与它的验收用例一起生成」此前只兑现了一半，v2 补的是另一半。
+
+新增产出：`src/views/<module>/index.vue`、`src/api/<module>.ts`、`db/menu-<table>.sql`。
+
+**菜单 SQL 不是可选项**：前端 `accessMode: 'backend'`，路由完全由 `sys_menu` 下发，
+只生成 `.vue` 而没有菜单行，页面在系统里根本不可达——这正是发现 ⑪ 的同一个坑，
+换到生成器场景又会重演一次，所以由生成器一并产出。
+
+**`data-testid` 的命名规则单点提供**（`VueGenerator`），`TestSpecGenerator` 复用同一套。
+两处各写一套的后果是用例定位失败，而现象看起来像"页面坏了"，排查方向一开始就走偏。
+有一条测试专门断言「Spec 引用的每个锚点在页面里都真实存在」。
+
+#### 🔴 发现 ⑭：spec 里的 `query` 此前完全是死的
+
+`BaseController.list` 只接 `PageQuery`、从不构造 Wrapper，
+于是 spec 写 `query: like/eq/range` 只生成了一段 Javadoc。
+若照此生成前端搜索栏，就是一个**点了没反应**的控件——比没有这个功能更糟。
+
+处置：`BaseController` 增加 `buildListWrapper(Map)` 覆写点，codegen 生成其实现。
+
+**为什么是「固定签名 + 一个覆写点」，而不是让子类各自声明 `@RequestParam`**：
+子类若声明一个签名不同的 `list(...)` 并标 `@GetMapping`，它**不是覆写而是重载**，
+同一个 GET 路径上出现两个映射，Spring 启动直接报 `Ambiguous mapping`。
+留一个签名固定的入口，从结构上杜绝这种写法。
+
+#### 🔴 发现 ⑮：接口路径重复 `/api` 前缀，报错信息与真实原因毫不相干
+
+生成的前端客户端用了 spec 里的 `apiPrefix`（`/api/project`），
+而 `requestClient` 的 `baseURL` 已经是 `/api`，拼出来是 `/api/api/project`。
+后端按静态资源处理，抛 `NoResourceFoundException: No static resource api/api/project`，
+经全局异常处理器变成 **500**。
+
+故障表现的误导性是重点：前端看到的是"新增按钮点了报服务器错误"，
+后端日志里是"找不到静态资源"——**没有任何一条信息指向"路径拼重了"**。
+已加回归测试断言生成的客户端里不出现 `/api/` 前缀。
+
+#### 三个 bug 的暴露时机（这一轮最值得记的一条）
+
+| bug | 何时暴露 |
+|---|---|
+| 查询参数类型没进 import | 编译期 |
+| `@Override` 签名不匹配 → 重复映射 | 编译期（javac 先报 @Override）+ 启动期 |
+| **`/api` 前缀重复** | **只有真正打开页面点一次才会暴露** |
+
+前两个跑一次 `mvn compile` 就能发现，第三个必须端到端实跑。
+这解释了为什么"生成器单元测试全绿"完全不足以说明生成器可用——
+**必须把产物放进真实工程跑起来**。
+
+另有一条工具链教训：`mvn compile` 不加 `clean` 时增量编译会**跳过已改动的文件**，
+本轮因此一度以为带 `@Override` 的产物编译通过了。判断"能不能编译"必须用 `clean`。
+
+#### 已验证
+
+`sample-app` 的 `project` 模块**没有一行手写代码**，输入只有 `codegen-specs/project.yaml`。
+
+| 验证项 | 结果 |
+|---|---|
+| codegen 单元测试 | ✅ 40/40 |
+| 生成物在真实框架依赖树下编译 + 全量后端测试 | ✅ 34/34 |
+| 生成的 `.vue` / `.ts` 过 oxfmt / eslint / vue-tsc | ✅ 且与格式化结果**逐字节一致** |
+| 浏览器实跑生成的页面 | ✅ 9/9（菜单 → 打开 → 新增 → 搜索命中且筛掉不匹配项 → 重置 → 删除） |
+| 原有前端冒烟无回归 | ✅ 20/20 |
+| 数据库侧复核 | ✅ 中文完好、`create_by` 由框架填充、删除为逻辑删除（`deleted=1`，物理行保留） |
+
+「生成的 `.vue` 与格式化结果逐字节一致」这条是刻意做到的：
+业务方拿到生成物应当能直接提交，而不是先被 pre-commit 钩子拦一次。
