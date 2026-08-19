@@ -50,9 +50,12 @@ repos:
   # ---------- 代码生成器 ----------
   - name: codegen
     group: tools
-    status: planned
+    status: active
     lang: java
     desc: 代码生成器，以 YAML/DSL 为主输入（见 develop_plan.md 3.3.1）
+    note: |
+      不依赖任何 framework-* 模块——只产出源码文本，运行时不需要框架类。
+      产出含结构化端到端验收用例，连接目标 #2（面向 AI 编程）与 #3（AI 自主测试）。
 
   - name: db-compat-checker
     group: tools
