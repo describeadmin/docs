@@ -609,3 +609,42 @@ Vben 5.7.0 实际是 `"pnpm": ">=10.0.0"` + `packageManager: "pnpm@10.33.4"`。
 
 浏览器用 `channel: 'chrome'` 驱动本机已安装的 Chrome，**不下载 Playwright 自带的 Chromium**
 （本机实测下载失败，而政务项目开发机常处于受限网络）。
+
+#### 🔍 发现 ⑫：Windows 上 Python 的 `Path.write_text` 会把 `
+` 悄悄转成 `
+`
+
+本轮大量用脚本批改文件（scope 改名涉及 520 个文件），每写一次就重新引入一次 CRLF，
+而仓库 `.gitattributes` 规定 `eol=lf`，`oxfmt --check` 因此在 524 个文件上报错。
+
+**先在上游快照上跑一次 `oxfmt --check` 确认它是通过的**，才敢断定问题是我们引入的——
+否则很容易误判成"上游本来就不规范"而去改配置迁就。
+
+处置：批量改文件时按字节写（`write_bytes`），不用 `write_text`。
+这与发现 ④⑤（字符集）同源：**平台默认值在 Windows 上和在 CI 的 Linux 上不一样，
+凡是"用默认值"的地方都要显式指定。**
+
+#### 🔴 发现 ⑬："我跑过 lint 了" 必须指项目自己定义的那条命令
+
+本轮为此连着返工三次：
+
+| 第几次 | 跑了什么 | 漏了什么 |
+|---|---|---|
+| 1 | `eslint packages apps internal` | oxfmt、oxlint、stylelint、cspell 全没跑 |
+| 2 | 补了 oxfmt | oxlint 仍没跑，e2e 脚本的 `no-console` 没暴露 |
+| 3 | `eslint packages apps internal` | 范围不含根目录，`package.json`、`pnpm-workspace.yaml` 的问题没暴露 |
+
+根因是**给 CI 写了一条自己拼的检查命令**，与 lefthook `pre-commit` 实际执行的
+`pnpm check`（oxfmt + oxlint + eslint + stylelint + turbo typecheck + cspell）不一致。
+两边不一致的直接后果是：**本地能提交的代码，到 CI 才挂**。
+
+处置：CI 改为直接跑 `pnpm check`，与钩子完全同一条命令。
+
+> 附带发现：lefthook 钩子是在**第二次** `pnpm install` 时才装上的——
+> 首次 install 时目录还不是 git 仓库，`prepare` 阶段的 `lefthook install` 失败了。
+> 因此最初几次提交完全没被检查到，问题一直积到最后才集中爆发。
+> 新建仓库时应当 **先 `git init` 再 `pnpm install`**。
+
+顺带清掉 15 条已失效的 catalog 项（`ant-design-vue`、`naive-ui`、`tdesign-vue-next`、
+`vitepress` 系、`h3` / `jsonwebtoken` / `@faker-js/faker` 等）——
+对应的包在取材时就删了，catalog 里的声明成了死条目，`pnpm/yaml-no-unused-catalog-item` 会报。
