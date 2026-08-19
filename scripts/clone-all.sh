@@ -23,7 +23,7 @@ REPOS_FILE="$ROOT_DIR/repos.yml"
 
 ORG="$(sed -n 's/^org:[[:space:]]*//p' "$REPOS_FILE" | head -1)"
 HOST="$(sed -n 's/^host:[[:space:]]*//p' "$REPOS_FILE" | head -1)"
-SELF="$(basename "$ROOT_DIR")"
+SELF="$(basename "$ROOT_DIR")"   # 元仓库目录名（docs）
 
 INCLUDE_PLANNED=0
 LIST_ONLY=0

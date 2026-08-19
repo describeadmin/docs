@@ -8,15 +8,23 @@
 
 org: describeadmin
 host: github.com
-# 全部仓库会被检出到本文件所在目录的同级，形成扁平的工作区布局
+
+# 工作区布局：
+#   describe-admin/          ← 工作区根目录，【不是】 git 仓库
+#   ├── docs/                ← 本仓库所在处（元信息）
+#   ├── framework/           ← 独立 git 仓库
+#   ├── sample-app/          ← 独立 git 仓库
+#   └── frontend/            ← 独立 git 仓库
+#
+# 各仓库检出到本文件所在目录（docs/）的同级。
 
 repos:
   # ---------- 元仓库 ----------
-  - name: describe-admin
+  - name: docs
     group: meta
     status: active
-    desc: 组织根仓库：开发方案、版本基线、编码规范、仓库清单与工具脚本
-    note: 即当前仓库，clone-all.sh 会跳过自身
+    desc: 开发方案、版本基线、编码规范母本、发布手册、仓库清单与工具脚本
+    note: 即当前仓库，clone-all.sh 会跳过自身；不发布任何制品
 
   # ---------- 后端框架核心 ----------
   - name: framework
@@ -30,12 +38,14 @@ repos:
       - framework-web-starter
       - framework-security-starter
       - framework-mybatis-starter
+      - framework-system-starter      # 用户/角色/菜单/部门管理（建设中）
     publishes:
       - io.github.describeadmin:framework-bom
       - io.github.describeadmin:framework-common
       - io.github.describeadmin:framework-web-starter
       - io.github.describeadmin:framework-security-starter
       - io.github.describeadmin:framework-mybatis-starter
+      - io.github.describeadmin:framework-system-starter
 
   # ---------- 代码生成器 ----------
   - name: codegen
@@ -83,5 +93,10 @@ repos:
   # ---------- 样板 / 验证 ----------
   - name: sample-app
     group: sample
-    status: planned
+    status: active
+    lang: java
     desc: 业务模拟样板应用，用于发版前的兼容性测试门禁（见 develop_plan.md 第七章）
+    note: |
+      测试夹具，【不是产品的一部分】，永远不发布到 Maven Central。
+      以真实业务方姿态消费框架：继承 spring-boot-starter-parent、只 import framework-bom、
+      不写任何框架模块的版本号，因此「只有真实业务工程才会暴露」的问题会在这里被发现。

@@ -400,3 +400,53 @@ MyBatis-Plus 自 **3.5.9** 起将 JSqlParser 改为可选依赖，`PaginationInn
 **处置**：`sample-app` 增加 `maven-toolchains-plugin`，且**刻意指定 JDK 17 而非 21**——
 用最低支持版本构建业务工程，端到端证明方案 2.2.2 的承诺（业务方 Java 17+ 即可）成立。
 该配置需作为业务方接入文档的必备章节。
+
+### 第四轮（framework-system-starter：系统管理收回框架）
+
+#### 架构修正：系统管理原先放错了层
+
+方案 3.1 的 `framework-core` 四个模块全是【技术能力】（Web/安全底座/ORM 基类/工具），
+**没有任何模块用于承载业务功能**；而方案阶段 1 的交付物明确包含"RBAC 权限模型、菜单管理"。
+这个缺口导致 RBAC 最初被实现在 `sample-app` 里，等于**要求每个业务方自己实现一遍用户/角色/菜单**，
+同时违反目标 #1（生产级）与目标 #5（可持续升级——落在业务仓库的代码框架永远修不了）。
+
+**处置**：新增 `framework-system-starter`，把用户、角色、菜单、部门及登录接口收回框架；
+RBAC 的 DDL 由 `framework-security-starter` 迁入（安全底座只提供认证契约，不该规定表结构）；
+`sample-app` 退回为纯测试夹具，业务表换成明确属于业务域的 `biz_project`。
+
+验证结果：`sample-app` 未写一行 RBAC 代码，`SystemModuleIT` 注入的全部 Bean 均来自
+`io.github.describeadmin.system.*`。Tier 1 两条线各 **23/23 通过**。
+
+#### 🔴 发现 ⑦：跨 starter 使用 `@ConditionalOnBean` 的顺序陷阱
+
+`framework-security-starter` 的内置用户名密码登录带
+`@ConditionalOnBean(AuthUserLoader.class)`，而该 Bean 由 `framework-system-starter` 提供。
+
+`@ConditionalOnBean` **只检查当前已注册的 Bean 定义**，完全依赖自动配置的评估顺序。
+security 若先于 system 被评估，条件不满足，内置登录方式被**静默跳过**——
+编译、启动均无任何异常，直到调用登录才报「不支持的登录方式: password」。
+
+**处置**：`FrameworkSystemAutoConfiguration` 声明
+`@AutoConfiguration(before = FrameworkSecurityAutoConfiguration.class)`。
+
+> 教训：跨模块的 `@ConditionalOnBean` 必须显式声明自动配置顺序。
+> 该问题编译期毫无征兆，只有真实 Spring 上下文才暴露——又一次印证集成测试不可省。
+
+#### 🔍 发现 ⑧：业务方的 `@MapperScan` 会屏蔽框架 Mapper 的自动扫描
+
+业务方应用一旦声明 `@MapperScan("com.业务方...")`，MyBatis 的自动扫描即失效，
+框架自己的 Mapper 不会被注册。
+
+**处置**：`FrameworkSystemAutoConfiguration` 显式声明
+`@MapperScan("io.github.describeadmin.system.mapper")` 与对应的 `@ComponentScan`，
+框架为自己的组件登记扫描路径，业务方无需（也不应）关心。
+
+#### 设计记录：树结构在内存构建，不使用递归 CTE
+
+菜单树与部门树用 `TreeBuilder` 在内存组装。MySQL 8.0 的 `WITH RECURSIVE` 最直观，
+但被 SQL 红线禁用（5.7 无此特性，部分国产化库亦不支持）。
+菜单/部门数据量通常在百到千级，全量查询 + 内存组装的开销可忽略，
+以此换取跨数据库确定性是划算的。数据量真正大到不可接受时应改用物化路径（`ancestors` 字段），
+那同样只需基础 SQL。
+
+孤儿节点（父节点不存在或已逻辑删除）会被提升为根而非静默丢弃——数据有问题时让它可见更利于排查。
