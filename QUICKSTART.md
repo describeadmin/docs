@@ -38,15 +38,45 @@
 
 | 项 | 要求 | 怎么确认 |
 |---|---|---|
-| JDK | 运行需 **17+**；若要自己构建框架则需 **21** | `java -version` |
+| JDK | **17+**（见下方⚠️，这一条最容易出事） | `mvn -v` 输出的 `Java version` |
 | Maven | 3.9+ | `mvn -v` |
 | Node | `^22.18 \|\| ^24.12` | `node -v` |
 | pnpm | `>=11` | `pnpm -v` |
 | Docker | 任意近期版本（或你自备 MySQL 5.7+） | `docker -v` |
 
-> ⚠️ **不要用 `java -version` 判断构建用的 JDK。** 框架通过 Maven Toolchains
-> 选择 JDK，`PATH` 上是什么与构建用什么无关。只有你要**自己构建框架源码**时
-> 才需要配 toolchains；只是**使用**已发布的 0.1.0 制品的话不需要。
+> ⚠️ **决定成败的是「Maven 自己跑在哪个 JDK 上」，不是 `java -version`。**
+>
+> 这里有两个不同的 JDK，很容易混为一谈：
+>
+> | | 由什么决定 | 要求 |
+> |---|---|---|
+> | **编译**用的 JDK | `maven-toolchains-plugin` | 框架源码构建需 21；业务工程需 17 |
+> | **Maven 进程本身**跑的 JDK | `JAVA_HOME` / `PATH` | **必须 17+** |
+>
+> 第二条常被忽略，但它会直接让构建失败：`spring-boot-maven-plugin` 的
+> `repackage` 是用 Java 17 编译的，Maven 跑在 JDK 11 上**加载不了这个插件**，
+> 报错长这样——
+>
+> ```
+> Unable to load the mojo 'repackage' ... due to an API incompatibility:
+> org/springframework/boot/maven/RepackageMojo has been compiled by a more
+> recent version of the Java Runtime (class file version 61.0), this version
+> of the Java Runtime only recognizes class file versions up to 55.0
+> ```
+>
+> 报错里提的是 `RepackageMojo`，看起来像 Spring Boot 插件的问题，
+> 实际是你的 `JAVA_HOME` 太旧。**本文作者实测撞过这一条。**
+>
+> 确认方法用 `mvn -v` 看 `Java version`，**不要用 `java -version`**——
+> 后者看的是 `PATH` 上第一个 java，未必是 Maven 用的那个。
+>
+> ```bash
+> mvn -v | grep "Java version"        # 必须 >= 17
+> export JAVA_HOME=/path/to/jdk17     # 不满足时这样改（Windows: $env:JAVA_HOME=...）
+> ```
+>
+> 只有你要**自己构建框架源码**时才需要额外配 toolchains；
+> 只是**使用**已发布的 0.1.0 制品的话不需要。
 
 ---
 
@@ -93,7 +123,8 @@ curl -s -X POST http://localhost:8090/api/auth/login \
   -d '{"username":"admin","password":"admin123"}'
 ```
 
-应当返回 `{"code":0,...}` 且 `data.accessToken` 非空。
+应当返回 `{"code":0,...}`，令牌在 **`data.token`**（不是 `accessToken`），
+同时 `data.user` 里带 `nickname` / `roles` / `permissions`。
 
 > **默认账号 `admin` / `admin123` 仅供本地开发。**
 > `local` profile 每次启动都会重放种子脚本，绝不能用于任何真实环境。
@@ -234,7 +265,8 @@ spring:
 | 库里中文全是乱码，但行数对得上 | 少了 `spring.sql.init.encoding=UTF-8`（§6.3） |
 | 生成的页面在侧边栏里找不到 | 菜单 SQL 没登记（§6.3） |
 | 连 MySQL 5.7 直接失败 | 驱动版本被父 POM 覆盖（§5） |
-| 报「不支持发行版本 17」 | 用错了 JDK（§5） |
+| 报「不支持发行版本 17」 | 编译用的 JDK 不对（§5） |
+| `RepackageMojo ... class file version 61.0 ... up to 55.0` | **Maven 自己**跑在 JDK 11 上，与 §5 不是同一回事，见 §1 的 ⚠️ |
 | 登录后直接落到 404 | `defaultHomePath` 填了菜单表里不存在的路径 |
 
 更多已核验的事实与已知的错误信息源，见
@@ -249,10 +281,29 @@ spring:
 | 步骤 | 状态 |
 |---|---|
 | §2 起数据库 | ✅ 实测 |
-| §3 后端起服务、登录 | ✅ 实测（此前用本地构建的框架；**用 Central 上的 0.1.0 重测见下**） |
+| §3 后端起服务、登录 | ✅ **用 Maven Central 上的 0.1.0 实测**，详见下方 |
 | §4 前端起服务、登录 | ✅ 实测（29/29 端到端用例，真实浏览器 → Spring Boot → MySQL 5.7） |
+| §6 生成模块并接入 | ✅ 实测（用 GitHub Release 上发布的 `codegen.jar`） |
 | §4「删掉 packages/ 改用 npm 包」 | ⬜ **未实测** |
-| §6 生成模块并接入 | ✅ 实测 |
-| 从 Maven Central / npm 拉取 0.1.0 全新走一遍 | ⬜ **待 0.1.0 发布后补测** |
 
-未实测的两行会在补测后更新，不会一直挂着。
+### 从 Maven Central 消费这条链路是怎么验的
+
+「能构建」不等于「能用」，所以这条按下面的顺序验，每一步都不靠推断：
+
+1. **全新克隆** `sample-app`，**空的本地 Maven 仓库**（`-Dmaven.repo.local` 指向空目录）
+   ——本机 `~/.m2` 里若有同版本缓存，Maven 根本不会碰 Central，跑绿了也证明不了任何事
+2. 来源核验：`_remote.repositories` 记录为 `central=`，
+   且本地解析到的 jar 与 `repo1.maven.org` 上的 **SHA256 完全一致**
+3. 构建 → 启动 → 登录：`code: 0`，令牌 43 字符
+4. 中文按**字节**核验：`nickname` 为 `e8b685e7baa7e7aea1e79086e59198`，
+   与 `超级管理员` 的 UTF-8 编码逐字节相同
+   ——不看控制台渲染，Windows 代码页会把好数据显示成乱码
+5. RBAC：角色 `ADMIN`，24 个权限点；菜单树 dashboard / system（4 个子项）/ biz 结构正确，
+   `系统管理`、`用户管理` 的字节同样逐一核对
+
+**这一轮实测改掉了本文两处会让人卡住的错误**：登录响应的令牌字段是 `data.token`
+而非 `accessToken`；以及 §1 那条关于 Maven 自身 JDK 的 ⚠️——作者自己就撞了，
+报错指向 `RepackageMojo`，与真实原因（`JAVA_HOME` 太旧）相距很远。
+
+用 `repo1.maven.org` 核验，**不要用 `search.maven.org`**——那个索引已陈旧，
+会对真实存在的制品返回假阴性。
