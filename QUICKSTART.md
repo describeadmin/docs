@@ -336,7 +336,7 @@ spring:
 | §4「删掉 packages/ 改用 npm 包」 | ⬜ **未实测** |
 
 > §3 那一行的 archetype 用的是**本地 `mvn install` 的制品**——
-> `describeadmin-archetype` 将随 **0.1.1** 首次发布，截至本次更新尚未上 Central。
+> `describeadmin-archetype` 随 **0.1.1** 首次发布（2026-08-20 打 tag）。
 > 发布后这条命令才对外可用，届时本行会改为「用 Central 上的制品实测」。
 > 同一行的"后端起服务、登录"是 0.1.0 时用 Central 制品实测的，那条结论不受影响。
 
