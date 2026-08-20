@@ -85,6 +85,33 @@ repos:
     desc: 数据库兼容性自检工具（见 develop_plan.md 2.3.3 / 5.5）
 
   # ---------- 后端可选插件 ----------
+  #
+  # 插件一律独立成仓（3.1.1），不作为 framework 仓的 module。
+  # 两条理由：版本线不绑定（框架发 0.3.0 时一行没改的插件不必跟着发，
+  # 插件修 bug 也不必等框架的发布窗口），发布不捆绑（framework 的 mvn deploy
+  # 不会把插件一起推上 Central）。
+  #
+  # 每个插件必须声明【适配的最低框架版本】，并在三处保持一致：registry.md 的表格、
+  # 插件 POM 里 import 的 framework-bom 版本、代码里的常量 + 启动期自检。
+  # 详见 registry.md 准入规范第 4、5 条。
+  - name: framework-cache-redis-starter
+    group: ext
+    status: active
+    lang: java
+    spi: CacheProvider, TokenStore
+    desc: 把 CacheProvider 与 TokenStore 切换到 Redis，解除内存实现的重启掉线与不支持多实例
+    framework_min: "0.2.0"   # 用到 0.2.0 引入的 TokenStore.listActive() 与 ActiveSession
+    note: |
+      第一个可选插件，也是"能力可插拔"这条设计的第一个真实证据。
+      POM 【不继承 framework-parent】，改为 import framework-bom —— 那正是业务方消费框架的
+      姿势，插件用同一套姿势才能提前暴露业务方会遇到的问题。
+      ⚠️ framework-bom 【不仲裁】本插件的版本：插件有自己的版本线，
+      让 BOM 按框架版本去解析插件，业务方会拿到一个根本不存在的制品。引用时须显式写版本号。
+    publishes:
+      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Central 后才能发本插件 ——
+      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      - io.github.describeadmin:framework-cache-redis-starter
+
   - name: framework-auth-zhengwuding-starter
     group: ext
     status: planned

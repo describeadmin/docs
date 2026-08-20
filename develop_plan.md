@@ -247,10 +247,23 @@ CI 测 MySQL 5.7 只能证明"框架没有使用 8.0+ 语法"，**不能证明"�
 - `framework-web-starter`：统一响应体、全局异常处理、请求日志/链路追踪、统一参数校验
 - `framework-security-starter`：认证鉴权基座（基于 Spring Security 6.5.x），内置用户名密码登录，同时定义 `AuthProvider` 等 SPI 接口供扩展
 - `framework-mybatis-starter`：`BaseEntity` / `BaseMapper` / `BaseService` / `BaseController` 泛型基类，封装分页、通用查询、审计字段（创建人/创建时间/更新人/更新时间/逻辑删除），SQL 写法遵循 2.3.1 的语法基线；**不引入任何 JDBC 驱动**
-- `framework-common`：通用工具类、常量、枚举、Result 包装类
+- `framework-common`：通用工具类、常量、枚举、Result 包装类，以及跨模块契约
+  （`CurrentUserProvider`、`PermissionChecker`、`FrameworkVersion`）
+- `framework-cache-starter`：`CacheProvider` 契约 + 零依赖内存实现。
+  集中式实现走插件，本模块不允许引入任何缓存中间件依赖
+- `framework-system-starter`：RBAC（用户 / 角色 / 菜单 / 部门）与登录端点
+
+> 正文早期只列了四个模块，与实际不符，v0.5 回填。**"必选"的判据见能力规划的三条**
+> （定义契约 / 必须唯一且全局生效 / 缺席就不安全），三条全否即应做插件。
 
 **framework-ext（可选，按需引入）**
 
+每个插件**独立仓库、独立版本线、独立发布**，不作为 framework 仓的 module（见 3.1.1）。
+清单与准入规范见 `registry.md`；插件 POM **不继承 `framework-parent`**，
+改为 `import framework-bom`——那正是业务方消费框架的姿势。
+
+- `framework-cache-redis-starter`：把 `CacheProvider` / `TokenStore` 切到 Redis
+  （**已落地**，第一个真实插件）
 - `framework-auth-zhengwuding-starter`：浙政钉登录，实现 `AuthProvider`
 - `framework-notify-dingtalk-starter`：钉钉消息推送，实现 `NotifyChannel`
 - `framework-notify-wecom-starter` / `framework-notify-sms-starter`：企业微信、短信通道，同样按需引入
@@ -689,6 +702,12 @@ npm create @describeadmin/app <项目名>
 ***
 
 ## 十、实施路线图
+
+> ⚠️ **本章是 v0.4 的战略分期，不是进度表。**
+> 当前实际进展、各仓状态与下一步动作见 **[`PROGRESS.md`](./PROGRESS.md)**——
+> 那里才是收工时更新的地方。本章的阶段 -1 / 0 / 1 已完成，阶段 2 部分完成
+> （第一个官方插件已跑通，厂商插件未开始）。
+> 后续能力按能力规划的 A~G 分期推进，两套分期的合并尚未完成。
 
 不给出具体日期（取决于团队规模和投入节奏），按依赖关系给出建议顺序。每个阶段建议找一个真实业务方做小范围试点验证后再推广。
 

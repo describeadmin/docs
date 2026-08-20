@@ -12,7 +12,8 @@
 
 | 仓库 | 内容 | 交付形态 |
 |---|---|---|
-| [framework](https://github.com/describeadmin/framework) | 后端框架核心：BOM + web / security / mybatis / system 五个 starter | Maven Central `io.github.describeadmin:*` |
+| [framework](https://github.com/describeadmin/framework) | 后端框架核心：BOM + common / web / security / mybatis / cache / system 各 starter | Maven Central `io.github.describeadmin:*` |
+| [framework-cache-redis-starter](https://github.com/describeadmin/framework-cache-redis-starter) | 可选插件：把 `CacheProvider` / `TokenStore` 切到 Redis | Maven Central（待发布） |
 | [frontend](https://github.com/describeadmin/frontend) | 27 个 `@describeadmin/*` 前端包与管理后台应用外壳 | npm `@describeadmin/*` |
 | [codegen](https://github.com/describeadmin/codegen) | 由 YAML spec 生成前后端两侧代码 | GitHub Release 可执行 jar |
 | [sample-app](https://github.com/describeadmin/sample-app) | 以真实业务方姿态消费框架的活样本 | 不发布，供参考与起步 |
@@ -23,9 +24,11 @@
 | 文件 | 写什么 | 什么时候看 |
 |---|---|---|
 | [QUICKSTART.md](./QUICKSTART.md) | 从零到跑起来 | **第一次来看这个** |
+| [PROGRESS.md](./PROGRESS.md) | 现在到哪了、下一步做什么 | **每次开工前看这个** |
 | [develop_plan.md](./develop_plan.md) | 完整设计方案与论证过程 | 想知道「为什么这么设计」 |
 | [VERSION_BASELINE.md](./VERSION_BASELINE.md) | 已核验的版本事实与已知的错误信息源 | 遇到版本/依赖问题 |
 | [CLAUDE.md](./CLAUDE.md) | 编码规范母本（各子仓库同步副本） | 动手改代码之前 |
+| [registry.md](./registry.md) | 插件目录与准入规范 | 写插件、或想知道某能力有没有现成的 |
 | [RELEASE.md](./RELEASE.md) | 发布手册 | 只有维护者需要 |
 | [repos.yml](./repos.yml) | 全部仓库与交付物的唯一登记处 | 想知道有哪些制品 |
 
