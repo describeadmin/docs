@@ -260,12 +260,60 @@ git commit -am "release: <版本>" && git tag v<版本> && git push && git push 
 
 ### 前置：`NPM_TOKEN`
 
-npm → Access Tokens → 生成 **Automation** 类型的 token。
+推荐 **Granular Access Token**（npm 现在主推的类型）。
+0.1.0 首发时在这上面连踩两次，两次的报错都把人往错误方向引：
 
-> ⚠️ **必须是 Automation，不能是 Publish 类型**——后者带 2FA 交互，
-> 会让 CI 无限期挂起而不是报错。
+| 设置 | 必须选什么 | 选错的后果 |
+|---|---|---|
+| **Bypass two-factor authentication (2FA)** | **必须勾选** | `403 Forbidden - Two-factor authentication or granular access token with bypass 2fa enabled is required` |
+| Packages → Permissions | **Read and write** | 403 |
+| Packages → Select packages | **All packages**（含 future packages） | 见下 |
+| Organizations | **Read and write** + 勾 `describeadmin` | 无法在 scope 下创建包 |
+
+> ⚠️ **「Only select packages and scopes」在首次发布时用不了。**
+> 它只能勾选**已存在**的包，而首发时这些包一个都不存在。
+> 必须给 **All packages**。
+
+传统 Classic Token 若仍可用，选 **Automation**（天然绕过 2FA）；
+**绝不能选 Publish**——后者要求 OTP，在 CI 里会挂起或直接失败。
+
+**记下 token 的到期日**。到期后流水线会突然 403，而那个 403 与
+「权限配错」的报错长得一模一样，极易把人引去反复检查权限配置。
 
 配到与 Maven 那四个同一处（组织级 Actions Secrets），名字 `NPM_TOKEN`。
+
+### ⚠️ npm 对新建包有发布速率限制
+
+0.1.0 首发时实际撞上：27 个包发出 25 个后，第 26 个拿到
+
+```
+429 Too Many Requests - Could not publish, as user undefined: rate limited exceeded
+```
+
+结果是**半发布**——一部分包在 registry 上，一部分不在。
+
+那次运气好，卡在 `layouts` / `plugins` 两个叶子包上，没有其他已发布包
+依赖它们，已发出的 25 个内部仍然自洽。**若卡在 `core-shared` 这类被大量
+依赖的包上，整组包会真的破损**：消费者装得到 A，却拉不到 A 依赖的 B。
+
+对一个一次要发几十个新包的仓库，撞限流是**必然而不是意外**。
+工作流已带指数退避重试（60/120/240/480 秒，共 5 次）。
+
+重试之所以安全，是因为 `pnpm publish` 会跳过 registry 上**已存在的相同版本**，
+只补发缺的。**这个幂等性是重试成立的前提**——没有它，重试就是危险动作。
+
+限流窗口较长（实测第一次 429 后约 25 分钟内重试仍被拒），
+job 内的退避不一定够；必要时隔半小时再从 `main` 用
+`workflow_dispatch`（`dry_run=false`）补跑一次。
+
+### ⚠️ 发布后核实必须逐个核对，不能抽查
+
+0.1.0 首发的缺口是**人工比对 npm 页面上的包数量**才发现的，
+不是流水线报出来的——当时的核实步骤只抽查 4 个包，
+而那 4 个恰好都在已发出的 25 个里，于是报绿。
+
+半发布状态的特征就是「大部分包在、少数不在」，**抽查天然会漏报**。
+工作流现已改为逐个核对全部待发布包。
 
 ### 流程
 
