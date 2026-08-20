@@ -3,6 +3,9 @@
 # 本项目采用「按模块细分多仓」拓扑（见 develop_plan.md 3.1.1）。
 # 该文件是全部仓库的唯一登记处，供 scripts/clone-all.sh 与 AI Agent 获取完整上下文使用。
 #
+# publishes 字段登记的是【交付给业务方的制品】。业务方如何消费这些制品，
+# 见 develop_plan.md 第九章「业务方接入路径」——标注 planned 的条目即该章新增的交付物。
+#
 # 用法：./scripts/clone-all.sh          克隆/更新全部 status: active 的仓库
 #       ./scripts/clone-all.sh core     只处理 group: core
 
@@ -39,6 +42,7 @@ repos:
       - framework-security-starter
       - framework-mybatis-starter
       - framework-system-starter      # 用户/角色/菜单/部门管理（建设中）
+      - describeadmin-archetype       # 业务方后端工程模板（planned，见 9.2.2）
     publishes:
       - io.github.describeadmin:framework-bom
       - io.github.describeadmin:framework-common
@@ -46,6 +50,10 @@ repos:
       - io.github.describeadmin:framework-security-starter
       - io.github.describeadmin:framework-mybatis-starter
       - io.github.describeadmin:framework-system-starter
+      # planned（9.2.2）：业务方 `mvn archetype:generate` 的入口。
+      # 与框架同仓发布、版本号保持一致——它生成的 POM 里写的就是框架版本。
+      # 职责是把发现 ②⑥⑧ 三个接入坑固化成默认正确的初始状态，使其对业务方不可见。
+      - io.github.describeadmin:describeadmin-archetype
 
   # ---------- 代码生成器 ----------
   - name: codegen
@@ -56,6 +64,18 @@ repos:
     note: |
       不依赖任何 framework-* 模块——只产出源码文本，运行时不需要框架类。
       产出含结构化端到端验收用例，连接目标 #2（面向 AI 编程）与 #3（AI 自主测试）。
+      ⚠️ 它是【命令行工具，不是库】：绝不出现在业务方 pom.xml 的 <dependencies> 中（9.4）。
+      会同时向两个仓库输出（Java/SQL → <业务>-server，Vue/TS → <业务>-web），
+      因此交付形态必须能跨仓工作。
+    publishes:
+      # ⚠️ 尚未发布。POM 已配齐 Central 所需的 license/developers/scm/url 与 shade 打包，
+      #    但本仓【没有 release.yml】，发布链路尚未打通（framework 仓已有）。
+      # 主交付形态（planned，9.4.1）：业务方在 <build><plugins> 中声明，
+      # frontendOut 指向同级的 <业务>-web；版本由 framework-bom 仲裁，与框架版本联动。
+      # 选插件而非 java -jar 的理由见 9.4.1——它在 pom.xml 里是可被 AI Agent 发现的。
+      - io.github.describeadmin:describeadmin-codegen-maven-plugin
+      # 辅助形态：可执行 fat jar，随 GitHub Release 分发，供非 Maven 场景与 CI 使用
+      - io.github.describeadmin:codegen
 
   - name: db-compat-checker
     group: tools
@@ -99,6 +119,14 @@ repos:
       - "@describeadmin/layouts"
       - "@describeadmin/access"
       - "@describeadmin/request"
+      # planned（9.3.1）：系统管理四个页面（实测 1,376 行）目前在 apps/admin 的应用层，
+      # 与后端 framework-system-starter 不对称——业务方复制走应用外壳后，
+      # 框架对这些页面的修复将无法到达。收进本包后业务方只保留路由挂载点。
+      - "@describeadmin/system-ui"
+      # planned（9.3.2）：`npm create @describeadmin/app` 的实现包。
+      # 生成业务方的应用外壳（收走 system-ui 后约 2,200 行），替代 fork apps/admin。
+      # 外壳不会自动升级，因此必须尽可能薄——这是升级机制成立的前提，不是洁癖。
+      - "@describeadmin/create-app"
 
   # ---------- 样板 / 验证 ----------
   - name: sample-app
