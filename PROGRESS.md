@@ -10,37 +10,44 @@
 
 ---
 
-## ⚠️ 先看这个：本地有大量未提交改动
+## ⚠️ 先看这个：五个 PR 待合并
 
-**0.2.0 的全部工作都还只在本地工作区，没有推上 GitHub。**
-下次开工前先确认这一点，否则会以为框架还停在 0.1.1。
+**0.2.0 的全部工作已提交并推送，但都还在分支上没合进 main。**
+框架的 `main` 因此仍是 **0.1.1**，下次开工前先确认这一点。
 
-| 仓库 | Central / npm | GitHub main | 本地工作区 |
+| 仓库 | PR | CI | 说明 |
 |---|---|---|---|
-| `framework` | **0.1.1** | **0.1.1** | `0.2.0-SNAPSHOT`，**35 项未提交** ⚠️ |
-| `framework-cache-redis-starter` | 未发布 | `0.2.0-SNAPSHOT` ✅ 已推 | 与 main 一致 |
-| `docs` | 不发布 | — | 6 项未提交（`registry.md`、`PROGRESS.md` 是新文件） |
-| `codegen` | 未发布 | — | 2 项未提交 |
-| `sample-app` | 不发布 | — | 6 项未提交（3 个新 IT） |
-| `frontend` | 未发布 | `0.1.0` | 1 项未提交（仅 `CLAUDE.md` 同步） |
+| `framework` | [#1](https://github.com/describeadmin/framework/pull/1) | ✅ 全绿 | **先合这个**，其余两个仓的 CI 依赖它 |
+| `docs` | [#1](https://github.com/describeadmin/docs/pull/1) | 无 CI | 本文件 + `registry.md` |
+| `codegen` | [#1](https://github.com/describeadmin/codegen/pull/1) | ✅ 通过 | 不依赖 framework，可随时合 |
+| `frontend` | [#1](https://github.com/describeadmin/frontend/pull/1) | — | 仅 `CLAUDE.md` 同步 |
+| `sample-app` | [#1](https://github.com/describeadmin/sample-app/pull/1) | ❌ 见下 | **合完 framework 后重跑即绿** |
 
-**连带后果**：`framework-cache-redis-starter` 的 CI 现在是红的，卡在守卫步骤上：
+**`sample-app` 与插件仓的 CI 现在都是红的，原因相同**——两者的 CI 都会去拿
+`describeadmin/framework` 的 `main`，而那里还是 0.1.1：
 
 ```
+Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 ##[error]框架仓 main 当前是 0.1.1，矩阵要的是 0.2.0-SNAPSHOT。
 ```
 
-这是设计如此——静默用错版本比直接失败更糟。framework 一推上去就会自动转绿。
+插件仓那条是**守卫步骤主动报的**，设计如此——静默用错版本比直接失败更糟。
+合并 framework#1 后重跑这两个仓的 CI 即可转绿。
+
+| 仓库 | Central / npm | GitHub main |
+|---|---|---|
+| `framework` | **0.1.1** | 0.1.1（0.2.0 在 PR #1 里） |
+| `framework-cache-redis-starter` | 未发布 | `0.2.0-SNAPSHOT` ✅ 已在 main |
+| `frontend` | 未发布 | `0.1.0` |
+| `codegen` | 未发布 | — |
 
 ---
 
 ## 下一步（按依赖顺序）
 
-1. **把 framework 0.2.0-SNAPSHOT 推上 GitHub**（建议开分支 + PR，不直推 main）。
-   它是三件事的共同前提：插件 CI 转绿、插件能发 Central、阶段 D 有地基。
-   PR 描述里必须写清那条 Breaking Change——升级方"能登录就能调"的接口开始返 403，
-   而 `git log` 的正文没人会回头翻。
-   顺带把 `docs` / `codegen` / `sample-app` 的改动一并提交，它们与 framework 是同一批工作。
+1. **合并 framework#1**，然后重跑 `sample-app` 与插件仓的 CI。
+   它是三件事的共同前提：那两个仓的 CI 转绿、插件能发 Central、阶段 D 有地基。
+   其余四个 PR 合并顺序不限。
 2. **阶段 D：数据权限 + `sys_dept.ancestors` 物化路径**。
    不必等发布，但必须等第 1 步。
    **越早做越便宜**——这是原方案里唯一的既有表结构变更，等业务方开始建库之后再加列就得写迁移脚本。
