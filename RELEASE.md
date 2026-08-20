@@ -1,10 +1,29 @@
-# 发布手册（Maven Central）
+# 发布手册
 
 > 面向框架维护者。目标读者包括**几个月后的你自己**——发版是低频操作，
 > 每次都要重新查一遍太浪费，所以这里把每一步都写死，包括为什么这么做。
 >
-> 命名空间：`io.github.describeadmin` ｜ GitHub 组织：`describeadmin`
-> 相关设计见 `develop_plan.md` 第七章；工作流见 `.github/workflows/release.yml`。
+> 命名空间：`io.github.describeadmin` ｜ npm 作用域：`@describeadmin`
+> ｜ GitHub 组织：`describeadmin`
+> 相关设计见 `develop_plan.md` 第七章。
+
+## 三条发布链路
+
+本项目有三条彼此独立的发布链路，**可逆性完全不同**，处置态度也应不同：
+
+| 链路 | 仓库 | 目的地 | 可逆性 |
+|---|---|---|---|
+| Maven Central | `framework` | `io.github.describeadmin:*` | **完全不可逆**。不可删除、不可覆盖、不可撤回 |
+| npm | `frontend` | `@describeadmin/*` | 72 小时内可 unpublish，但一旦有人装过，unpublish 会破坏对方构建——**实际上应当作不可逆对待** |
+| GitHub Release | `codegen` | 可执行 fat jar | **可逆**。可删除重发 |
+
+三者的版本号保持一致（当前 `0.1.0`）。`codegen` 与 `framework` 必须一致，
+因为生成的代码要继承框架基类，兼容性只能成对理解。
+
+发布顺序：**framework → codegen → frontend**。前两者之间没有依赖，
+但 `sample-app` 要能从 Central 拉到框架，才谈得上验证接入路径。
+
+§1–§4 讲 Maven Central，§4A 讲 codegen，§4B 讲 npm。
 
 ---
 
@@ -214,6 +233,74 @@ curl -s https://repo1.maven.org/maven2/io/github/describeadmin/framework-bom/mav
 
 > 用 repo1 核实，**不要用 `search.maven.org`**——那个索引已陈旧，
 > 会对真实存在的制品返回假阴性（详见 `VERSION_BASELINE.md` 附录）。
+
+---
+
+## 4A. codegen 发布（GitHub Release）
+
+**不发布到 Maven Central。** 理由不是省事：`develop_plan.md` 9.4 定了
+`codegen` 绝不出现在业务方 `pom.xml` 的 `<dependencies>` 中——它是命令行工具，
+产物一旦生成即脱离生成器。既然没有「依赖它」的消费者，发到 Central 没有意义。
+Central 只对未来的 `describeadmin-codegen-maven-plugin` 形态有价值。
+
+```bash
+cd codegen
+mvn versions:set -DnewVersion=<版本> -DgenerateBackupPoms=false
+# 更新 CHANGELOG.md（工作流会抽取对应版本那一节作为 release notes）
+git commit -am "release: <版本>" && git tag v<版本> && git push && git push --tags
+```
+
+工作流会先**实际执行一次** `java -jar` 生成产物并断言中文完好，
+再创建 Release。只检查文件存在是不够的——shade 配置写错时 jar 照样产出，
+用户下载下来第一条命令才失败。
+
+发错了可以删 Release 重发，这条链路不需要审批闸门那么紧张。
+
+## 4B. npm 发布（`@describeadmin/*`）
+
+### 前置：`NPM_TOKEN`
+
+npm → Access Tokens → 生成 **Automation** 类型的 token。
+
+> ⚠️ **必须是 Automation，不能是 Publish 类型**——后者带 2FA 交互，
+> 会让 CI 无限期挂起而不是报错。
+
+配到与 Maven 那四个同一处（组织级 Actions Secrets），名字 `NPM_TOKEN`。
+
+### 流程
+
+```bash
+cd frontend
+# 全部 workspace 包版本置为目标版本（含 private 包，保持一致）
+# 校验：不应有任何包还停在旧版本
+grep -rn '"version": "<旧版本>"' --include=package.json packages apps internal scripts | grep -v node_modules
+git commit -am "release: <版本>" && git tag v<版本> && git push && git push --tags
+```
+
+工作流有**两道独立门禁，缺一不可**：
+
+| 门禁 | 保证什么 | 不保证什么 |
+|---|---|---|
+| `publint` | `package.json` 的 exports / files / types 正确 | 不保证 `dist` 有内容 |
+| dist 非空校验 | 每个待发布包的 `dist` 总字节数 > 0 | 不保证内容正确 |
+
+`exports` 写得再对，`dist` 是空的，业务方装上去照样白屏——这个组合
+是实际踩过的（`core-design` 的 `exports.default` 曾指向不存在的
+`./dist/design.css`，消费者拿到 0 字节 CSS）。
+
+> ⚠️ **publint 那一步必须先删缓存**：`vsh publint` 按 `package.json`
+> 内容哈希缓存结论，缓存命中时报的是**上一次**的结果，与当前 `dist` 无关。
+> 不清缓存的话，`dist` 被删光也可能报「无问题」——门禁是反的。
+> 工作流里已有 `rm -rf node_modules/.cache/publint`。
+
+### 发布后核实
+
+```bash
+npm view @describeadmin/ui version
+# 装到工作区之外的一个全新工程里真实构建一次，确认 CSS 产物非空
+```
+
+**不要只看 `npm view` 就下结论**。包能装 ≠ 能用，这是两件事。
 
 ---
 
