@@ -739,14 +739,16 @@ codegen v1 产出的测试 Spec 断言的是 `[data-testid="xxx-add-btn"]` 这�
 方案 9.2.2 要求的 Maven archetype 落地。目标是把接入方式从"以样例仓库为起点、
 拿到后再删掉示例模块"换成"一条命令生成空工程"。
 
-随 **0.1.1** 发布（框架六个模块本身无功能变更，跟随版本线是为了让
-"archetype 版本 == 生成物引用的框架版本"这条约定成立）。
+已随 **0.1.1** 发布到 Maven Central（2026-08-20；框架六个模块本身无功能变更，
+跟随版本线是为了让"archetype 版本 == 生成物引用的框架版本"这条约定成立）。
 
-已验证（本地已安装的制品，尚未发布到 Central）：
+已验证（**空本地仓库，全部走 Central**；来源经 `_remote.repositories=central` 与
+SHA256 双重核对）：
 
 | 验证项 | 结果 |
 |---|---|
 | `archetype:generate` 生成工程 | ✅ 6 个文件齐全，变量全部替换到位 |
+| 制品来源 | ✅ `central=`，jar 的 SHA256 与 repo1 一致 |
 | 用 **JDK 17** 构建生成物 | ✅ `mvn package` 通过（不配 toolchains） |
 | 起服务 → 登录 | ✅ `code: 0`，令牌 43 字符，`roles: [ADMIN]`，20 个权限点 |
 | 中文按字节核验 | ✅ `nickname` = `e8b685e7baa7e7aea1e79086e59198`（`超级管理员`） |
@@ -803,3 +805,8 @@ archetype 的文件过滤走 Velocity。给 `README.md` 开过滤后，
 | `io.helidon.archetypes:helidon-quickstart-se:4.5.3` | 2026-08 | 仅 `.jar` + `.pom` |
 
 两者都是 `packaging=maven-archetype`。因此本模块的发布不需要任何额外配置。
+
+**0.1.1 发布后，这条已由本项目自身的制品坐实**——
+`describeadmin-archetype:0.1.1` 在 Central 上的实际附件是
+`.jar` / `.pom` / 两个 `.asc` / `-sources.jar`，**没有 `-javadoc.jar`（404）**，
+Portal 照样校验通过并发布成功。

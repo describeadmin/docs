@@ -329,16 +329,15 @@ spring:
 | 步骤 | 状态 |
 |---|---|
 | §2 起数据库 | ✅ 实测 |
-| §3 用 archetype 生成工程 → 构建 → 登录 | ✅ 实测（2026-08-20，本地已安装的 archetype），详见下方 |
+| §3 用 archetype 生成工程 → 构建 → 登录 | ✅ **用 Maven Central 上的 0.1.1 实测**（空本地仓库），详见下方 |
 | §3 后端起服务、登录 | ✅ **用 Maven Central 上的 0.1.0 实测**，详见下方 |
 | §4 前端起服务、登录 | ✅ 实测（29/29 端到端用例，真实浏览器 → Spring Boot → MySQL 5.7） |
 | §6 生成模块并接入 | ✅ 实测（用 GitHub Release 上发布的 `codegen.jar`） |
 | §4「删掉 packages/ 改用 npm 包」 | ⬜ **未实测** |
 
-> §3 那一行的 archetype 用的是**本地 `mvn install` 的制品**——
-> `describeadmin-archetype` 随 **0.1.1** 首次发布（2026-08-20 打 tag）。
-> 发布后这条命令才对外可用，届时本行会改为「用 Central 上的制品实测」。
-> 同一行的"后端起服务、登录"是 0.1.0 时用 Central 制品实测的，那条结论不受影响。
+> `describeadmin-archetype` 随 **0.1.1** 首次发布（2026-08-20）。
+> 上表两行分属两次实测：§3 的 archetype 行用的是 Central 上的 0.1.1，
+> "后端起服务、登录"行是 0.1.0 首发时的记录，两者的结论互不依赖。
 
 ### 从 Maven Central 消费这条链路是怎么验的
 
@@ -364,8 +363,12 @@ spring:
 
 ### 脚手架这条链路是怎么验的
 
-同样不靠推断，每一步都落到可核对的事实上：
+同样不靠推断，每一步都落到可核对的事实上。**用空的本地仓库跑**
+（`-Dmaven.repo.local` 指向空目录）——本机 `~/.m2` 里有同版本的 `install` 产物的话，
+Maven 根本不会碰 Central，跑绿了也证明不了任何事：
 
+0. 来源核验：`_remote.repositories` 记录为 `central=`，本地解析到的 archetype jar 与
+   repo1 上的 **SHA256 完全一致**（`1c7cabae…b837d12`）
 1. `mvn archetype:generate` 生成工程 → 6 个文件齐全，**`.gitignore` 与 `.gitattributes` 都在**
    （这两个文件是分开验的：Maven 的默认排除规则只吃掉前者，且不报任何错）
 2. 生成物里**没有未替换的变量**，`README.md` 的二级标题一个不少
@@ -373,7 +376,8 @@ spring:
 3. **用 JDK 17 构建**（不是 21）：`mvn package` 通过，证明业务工程不需要 toolchains
 4. 起服务 → 登录：`code: 0`，令牌 43 字符，`roles: [ADMIN]`，20 个权限点
 5. 中文按**字节**核验：`nickname` 为 `e8b685e7baa7e7aea1e79086e59198`，
-   与 `超级管理员` 的 UTF-8 编码逐字节相同——不看控制台渲染
+   与 `超级管理员` 的 UTF-8 编码逐字节相同——不看控制台渲染。
+   库里的菜单名同样逐字节核对：`工作台` / `概览` / `系统管理` 三条无误
 
 第 1、2 条已固化为 `framework` 仓库 CI 的 `archetype-e2e` job，
 第 3~5 条同样在那个 job 里跑，用的是真实的 MySQL 5.7 容器。
