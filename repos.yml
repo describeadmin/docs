@@ -42,7 +42,7 @@ repos:
       - framework-security-starter
       - framework-mybatis-starter
       - framework-system-starter      # 用户/角色/菜单/部门管理（建设中）
-      - describeadmin-archetype       # 业务方后端工程模板（planned，见 9.2.2）
+      - describeadmin-archetype       # 业务方后端工程脚手架（见 9.2.2）
     publishes:
       - io.github.describeadmin:framework-bom
       - io.github.describeadmin:framework-common
@@ -50,9 +50,10 @@ repos:
       - io.github.describeadmin:framework-security-starter
       - io.github.describeadmin:framework-mybatis-starter
       - io.github.describeadmin:framework-system-starter
-      # planned（9.2.2）：业务方 `mvn archetype:generate` 的入口。
+      # 业务方 `mvn archetype:generate` 的入口（9.2.2）。
       # 与框架同仓发布、版本号保持一致——它生成的 POM 里写的就是框架版本。
-      # 职责是把发现 ②⑥⑧ 三个接入坑固化成默认正确的初始状态，使其对业务方不可见。
+      # 职责是把发现 ②⑤ 两个接入坑固化成默认正确的初始状态，使其对业务方不可见。
+      # （发现 ⑥ 的处置已推翻，⑧ 已由框架侧解决，见 VERSION_BASELINE 第八轮）
       - io.github.describeadmin:describeadmin-archetype
 
   # ---------- 代码生成器 ----------
@@ -138,3 +139,6 @@ repos:
       测试夹具，【不是产品的一部分】，永远不发布到 Maven Central。
       以真实业务方姿态消费框架：继承 spring-boot-starter-parent、只 import framework-bom、
       不写任何框架模块的版本号，因此「只有真实业务工程才会暴露」的问题会在这里被发现。
+      ⚠️ 自 0.1.1 起【不再是业务方的接入起点】——那是 describeadmin-archetype 的职责。
+      本仓保留的 maven-toolchains-plugin 也只服务于「以最低支持版本 JDK 17 构建」这个
+      框架侧验证目的，业务工程不应照抄（见 VERSION_BASELINE 发现 ⑥ 的修正）。

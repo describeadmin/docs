@@ -17,8 +17,12 @@
 | npm | `frontend` | `@describeadmin/*` | 72 小时内可 unpublish，但一旦有人装过，unpublish 会破坏对方构建——**实际上应当作不可逆对待** |
 | GitHub Release | `codegen` | 可执行 fat jar | **可逆**。可删除重发 |
 
-三者的版本号保持一致（当前 `0.1.0`）。`codegen` 与 `framework` 必须一致，
-因为生成的代码要继承框架基类，兼容性只能成对理解。
+三者的版本号保持一致（当前 `0.1.1`；`frontend` 仍在 `0.1.0`，下次发版时对齐）。
+`codegen` 与 `framework` 必须一致，因为生成的代码要继承框架基类，兼容性只能成对理解。
+
+> 这条规则不因"本次没有功能变更"而放宽：0.1.1 只交付了 `describeadmin-archetype`，
+> `codegen` 与框架六个模块都没有代码改动，仍然一起走版本号——
+> 让"看到同一个版本号就知道是配套的"这件事无条件成立，比省一次发布重要。
 
 发布顺序：**framework → codegen → frontend**。前两者之间没有依赖，
 但 `sample-app` 要能从 Central 拉到框架，才谈得上验证接入路径。

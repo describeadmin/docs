@@ -2,7 +2,8 @@
 
 > 目标：从零得到一个**可登录、带完整 RBAC、含一个自建业务模块**的管理后台。
 >
-> 适用版本：`0.1.0`。本文每一条命令都在 Windows 11 + Docker 上实测过，
+> 适用版本：后端 `0.1.1`（新增脚手架）、前端 `0.1.0`（无变化）。
+> 本文每一条命令都在 Windows 11 + Docker 上实测过，
 > 实测记录见文末「本文的验证状态」一节——**没实测过的步骤会明确标出**，
 > 不会混在实测过的步骤里让你分不清。
 
@@ -12,25 +13,25 @@
 
 先把话说在前面，免得你按着做到一半才发现方向不对。
 
-**0.1.0 能给你的**：
+**当前版本能给你的**：
 
-- 后端：`import` 一个 BOM + 五个 starter，得到统一响应结构、traceId、
-  令牌认证、MyBatis-Plus 基类，以及**开箱可用的用户/角色/菜单/部门管理**
+- 后端：**一条命令生成可直接登录的空工程**（§3）。工程 `import` 一个 BOM + 四个 starter，
+  得到统一响应结构、traceId、令牌认证、MyBatis-Plus 基类，
+  以及**开箱可用的用户/角色/菜单/部门管理**
 - 前端：27 个 `@describeadmin/*` npm 包，含布局、表单、弹窗、权限指令、请求封装
 - 生成器：写一份 YAML，一条命令同时产出后端四件套 + 建表 SQL + 菜单 SQL
   + 前端页面 + API 封装 + 验收用例
 
-**0.1.0 还给不了你的**（诚实记录，避免你踩空）：
+**还给不了你的**（诚实记录，避免你踩空）：
 
 | 缺什么 | 后果 | 当前的替代做法 |
 |---|---|---|
-| 后端工程模板 `describeadmin-archetype` | 从空工程手写 POM 会踩两个坑，见 §5 | **以 `sample-app` 为起点复制**，不要手写 |
 | 前端脚手架 `npm create @describeadmin/app` | 没有生成应用外壳的命令 | **以 `frontend/apps/admin` 为起点复制** |
 | `@describeadmin/system-ui` | 系统管理四个页面还在应用外壳里，你会永久拥有这 1376 行，框架后续对它们的修复到不了你那里 | 暂时接受；升级路径见 §7 |
 | codegen 的 Maven 插件形态 | 只能 `java -jar`，写不进 `pom.xml` | 用 fat jar |
 
-也就是说：**0.1.0 的接入方式是「以样例仓库为起点」，不是「一条命令生成工程」。**
-这是当前的真实状态，不是本文的简化写法。
+也就是说：**后端已经是「一条命令生成空工程」，前端仍然是「以样例仓库为起点」。**
+两边不对称是当前的真实状态，不是本文的简化写法。
 
 ---
 
@@ -50,7 +51,7 @@
 >
 > | | 由什么决定 | 要求 |
 > |---|---|---|
-> | **编译**用的 JDK | `maven-toolchains-plugin` | 框架源码构建需 21；业务工程需 17 |
+> | **编译**用的 JDK | 框架源码：`maven-toolchains-plugin`；业务工程：就是 Maven 自己那个 | 框架源码构建需 21；业务工程**不限**，见 §3 |
 > | **Maven 进程本身**跑的 JDK | `JAVA_HOME` / `PATH` | **必须 17+** |
 >
 > 第二条常被忽略，但它会直接让构建失败：`spring-boot-maven-plugin` 的
@@ -76,7 +77,7 @@
 > ```
 >
 > 只有你要**自己构建框架源码**时才需要额外配 toolchains；
-> 只是**使用**已发布的 0.1.0 制品的话不需要。
+> 只是**使用**已发布的框架制品的话不需要。
 
 ---
 
@@ -104,15 +105,27 @@ docker exec da-mysql mysql -uroot -proot -e 'SELECT 1' && echo "就绪"
 
 ---
 
-## 3. 后端：以 sample-app 为起点
+## 3. 后端：一条命令生成工程
 
 ```bash
-git clone https://github.com/describeadmin/sample-app.git my-server
+mvn archetype:generate -B \
+  -DarchetypeGroupId=io.github.describeadmin \
+  -DarchetypeArtifactId=describeadmin-archetype \
+  -DarchetypeVersion=0.1.1 \
+  -DgroupId=com.acme -DartifactId=my-server -Dpackage=com.acme.myserver
+
 cd my-server
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-`local` profile 监听 **8090**，并在每次启动时执行建表与种子脚本。
+不需要安装任何东西——`archetype:generate` 是 Maven 内置插件，模板从 Central 自动下载。
+IDEA 里也有现成入口：新建项目 → Maven Archetype，填上面三个 archetype 坐标即可。
+
+你得到的是一个**没有任何业务模块、但已经可以登录使用的后台**：
+用户 / 角色 / 菜单 / 部门管理与登录接口都在 `framework-system-starter` 里，
+**没有任何东西需要你事后删除**。
+
+`local` profile 监听 **8090**，每次启动执行建表与种子脚本。
 框架依赖从 Maven Central 拉取，**不需要你先构建 framework 源码**。
 
 跑起来之后确认一下：
@@ -129,18 +142,46 @@ curl -s -X POST http://localhost:8090/api/auth/login \
 > **默认账号 `admin` / `admin123` 仅供本地开发。**
 > `local` profile 每次启动都会重放种子脚本，绝不能用于任何真实环境。
 
-### 把它变成你自己的工程
+### 生成的工程里有什么
 
-`sample-app` 是**活样本**，不是要你原样跑的 demo。改造成你的工程：
+只有 6 个文件，全部归你所有：
 
-1. 改 `pom.xml` 的 `groupId` / `artifactId` / `<name>`
-2. 把 `io.github.describeadmin.sample` 改成你自己的包名
-3. 删掉 `project` 这个示例模块（`src/main/java/.../project/`、
-   `src/main/resources/db/schema-biz_project.sql`、`menu-biz_project.sql`，
-   以及 `application-local.yml` 里对这两个 SQL 的引用）
-4. 新建 `application-dev.yml` / `application-prod.yml` 指向你的真实数据库
+| 文件 | 作用 |
+|---|---|
+| `pom.xml` | import BOM + 四个 starter + 驱动；两个接入坑已固化成正确状态，见 §5 |
+| `src/main/java/<你的包>/Application.java` | 入口类，`@MapperScan` 已指向你自己的包 |
+| `src/main/resources/application.yml` | 框架配置骨架 |
+| `src/main/resources/application-local.yml` | 本地库连接、SQL 初始化、`encoding: UTF-8` |
+| `.gitattributes` / `.gitignore` | 换行符与忽略规则 |
+| `README.md` | 指向框架文档，并记录了上面那两个坑 |
 
-**第 3 步不要跳过**：留着示例模块，你的菜单里会一直挂着一个「项目管理」。
+**没有任何 SQL 文件**——`schema-rbac.sql` / `seed-rbac.sql` 在
+`framework-system-starter` 的 jar 里，工程通过 `classpath:` 引用。
+这正是"空工程也能直接登录"的原因，也意味着框架修了 RBAC 的 bug，你升个版本就拿到。
+
+### 可覆盖的参数
+
+去掉 `-B` 进入交互模式。有默认值的参数不会提问，需要改就在命令行上给：
+
+| 参数 | 默认值 |
+|---|---|
+| `-DappClassName=` | `Application` |
+| `-DserverPort=` | `8090` |
+| `-DdbPort=` / `-DdbName=` | `3307` / `describeadmin` |
+| `-DdbUsername=` / `-DdbPassword=` | `app` / `app` |
+| `-DdescribeadminVersion=` | 与 archetype 版本相同 |
+
+### 对 JDK 的要求只有一条
+
+**Maven 进程自身跑在 JDK 17+**（`mvn -v` 看 `Java version`，不要用 `java -version`）。
+
+生成的工程**刻意不带** `maven-toolchains-plugin`：用哪个发行版、哪个大版本构建是你的自由。
+产物侧由 `pom.xml` 的 `<java.version>17</java.version>`（即 `release=17`）钉死——
+无论用多新的 JDK 构建，字节码都落在 Java 17。
+
+（`sample-app` 的 POM 里有 toolchains 配置，那是为了让框架团队用最低支持版本验证兼容性，
+不是业务工程该抄的东西。业务方机器上大多没有 `~/.m2/toolchains.xml`，
+抄过去只会以 `Cannot find matching toolchain` 直接打死构建。）
 
 ---
 
@@ -174,18 +215,25 @@ pnpm dev            # http://localhost:5777
 
 ---
 
-## 5. 两个已实测的坑（手写 POM 时必踩）
+## 5. 脚手架替你挡掉的两个坑（手写 POM 时必踩）
 
-如果你不以 `sample-app` 为起点，而是从空的 Spring Boot 工程手写 POM，
-会踩到下面两个问题。它们的共同特征是：**报错信息与真实原因相距很远。**
+用 §3 的命令生成工程，这一节你可以跳过——它们已经是默认正确的状态。
+下面记录它们是什么，是因为你迟早要读自己的 `pom.xml`，
+而这两行看起来都像"可以顺手删掉的冗余配置"。
 
-| 坑 | 现象 | 处置 |
+它们的共同特征是：**报错信息与真实原因相距很远。**
+
+| 坑 | 现象 | 生成的工程里怎么处置的 |
 |---|---|---|
-| BOM 给的驱动版本失效 | 连 MySQL 5.7 直接失败 | 父 POM 继承的 `dependencyManagement` **优先级高于** import 的 BOM，实际解析到 Spring Boot 管理的新版驱动。必须在自己的 `<properties>` 里显式写 `<mysql.version>8.2.0</mysql.version>` |
-| 多 JDK 共存 | 报「不支持发行版本 17」 | 用了 `PATH` 上恰好存在的 JDK。配 `maven-toolchains-plugin` |
+| BOM 给的驱动版本失效 | 连 MySQL 5.7 直接失败 | 父 POM 继承的 `dependencyManagement` **优先级高于** import 的 BOM，实际解析到 Spring Boot 管理的新版驱动（Connector/J 自 8.3.0 起不再支持 5.7）。`<properties>` 里显式写了 `<mysql.version>8.2.0</mysql.version>` |
+| SQL 脚本按平台默认编码读 | 库里中文全乱码，而 `COUNT(*)` 校验完全正常 | `application-local.yml` 里显式写了 `spring.sql.init.encoding=UTF-8` |
 
-`sample-app` 的 POM 已经把这两条固化成默认正确的状态——这正是
-「接入不能靠文档，必须靠模板」的由来。
+这正是「接入不能靠文档，必须靠模板」的由来——两条都不是靠读文档能想起来的。
+
+> **"多 JDK 共存报『不支持发行版本 17』"不在这张表里**，因为它对业务工程不成立：
+> 生成的工程不配 `maven-toolchains-plugin`，编译用的就是 Maven 自己那个 JDK，
+> 而 Maven 本来就必须跑在 17+（§1）。给业务工程配 toolchains 反而会因为
+> 开发机上没有 `~/.m2/toolchains.xml` 而直接打死构建。
 
 > **曾经的第三个坑已经不存在了**：早期业务方写 `@MapperScan("自己的包")`
 > 会把框架的系统管理 Mapper 全部排除、登录直接失败。框架已在
@@ -281,10 +329,16 @@ spring:
 | 步骤 | 状态 |
 |---|---|
 | §2 起数据库 | ✅ 实测 |
+| §3 用 archetype 生成工程 → 构建 → 登录 | ✅ 实测（2026-08-20，本地已安装的 archetype），详见下方 |
 | §3 后端起服务、登录 | ✅ **用 Maven Central 上的 0.1.0 实测**，详见下方 |
 | §4 前端起服务、登录 | ✅ 实测（29/29 端到端用例，真实浏览器 → Spring Boot → MySQL 5.7） |
 | §6 生成模块并接入 | ✅ 实测（用 GitHub Release 上发布的 `codegen.jar`） |
 | §4「删掉 packages/ 改用 npm 包」 | ⬜ **未实测** |
+
+> §3 那一行的 archetype 用的是**本地 `mvn install` 的制品**——
+> `describeadmin-archetype` 将随 **0.1.1** 首次发布，截至本次更新尚未上 Central。
+> 发布后这条命令才对外可用，届时本行会改为「用 Central 上的制品实测」。
+> 同一行的"后端起服务、登录"是 0.1.0 时用 Central 制品实测的，那条结论不受影响。
 
 ### 从 Maven Central 消费这条链路是怎么验的
 
@@ -307,3 +361,19 @@ spring:
 
 用 `repo1.maven.org` 核验，**不要用 `search.maven.org`**——那个索引已陈旧，
 会对真实存在的制品返回假阴性。
+
+### 脚手架这条链路是怎么验的
+
+同样不靠推断，每一步都落到可核对的事实上：
+
+1. `mvn archetype:generate` 生成工程 → 6 个文件齐全，**`.gitignore` 与 `.gitattributes` 都在**
+   （这两个文件是分开验的：Maven 的默认排除规则只吃掉前者，且不报任何错）
+2. 生成物里**没有未替换的变量**，`README.md` 的二级标题一个不少
+   （Velocity 把行首 `##` 当行注释，标题会整行消失且不报错）
+3. **用 JDK 17 构建**（不是 21）：`mvn package` 通过，证明业务工程不需要 toolchains
+4. 起服务 → 登录：`code: 0`，令牌 43 字符，`roles: [ADMIN]`，20 个权限点
+5. 中文按**字节**核验：`nickname` 为 `e8b685e7baa7e7aea1e79086e59198`，
+   与 `超级管理员` 的 UTF-8 编码逐字节相同——不看控制台渲染
+
+第 1、2 条已固化为 `framework` 仓库 CI 的 `archetype-e2e` job，
+第 3~5 条同样在那个 job 里跑，用的是真实的 MySQL 5.7 容器。

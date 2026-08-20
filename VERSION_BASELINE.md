@@ -401,6 +401,18 @@ MyBatis-Plus 自 **3.5.9** 起将 JSqlParser 改为可选依赖，`PaginationInn
 用最低支持版本构建业务工程，端到端证明方案 2.2.2 的承诺（业务方 Java 17+ 即可）成立。
 该配置需作为业务方接入文档的必备章节。
 
+> **2026-08-20 修正（第八轮）**：这条结论对**业务方工程**已作废，只对 `sample-app` 保留。
+>
+> 真实原因不是"业务工程需要 toolchains"，而是"Maven 当时跑在 JDK 11 上"。
+> 而 Maven 跑在 17+ 本来就是硬要求（`spring-boot-maven-plugin:repackage` 加载不了），
+> 一旦满足，`release=17` 就必然能编，toolchains 没有增量价值。
+>
+> 反过来它有明确的害处：业务方开发机上大多没有 `~/.m2/toolchains.xml`，
+> 配了会以 `Cannot find matching toolchain` 直接打死构建——比它要防的坑更劝退。
+> 因此 `describeadmin-archetype` 生成的工程**不带** toolchains 配置。
+> `sample-app` 保留该配置，用途也随之变窄：它是框架团队"用最低支持版本 JDK 17 构建"
+> 的兼容性验证载体，不是业务方该抄的模板。
+
 ### 第四轮（framework-system-starter：系统管理收回框架）
 
 #### 架构修正：系统管理原先放错了层
@@ -721,3 +733,73 @@ codegen v1 产出的测试 Spec 断言的是 `[data-testid="xxx-add-btn"]` 这�
 
 「生成的 `.vue` 与格式化结果逐字节一致」这条是刻意做到的：
 业务方拿到生成物应当能直接提交，而不是先被 pre-commit 钩子拦一次。
+
+### 第八轮（describeadmin-archetype：业务方后端脚手架）
+
+方案 9.2.2 要求的 Maven archetype 落地。目标是把接入方式从"以样例仓库为起点、
+拿到后再删掉示例模块"换成"一条命令生成空工程"。
+
+随 **0.1.1** 发布（框架六个模块本身无功能变更，跟随版本线是为了让
+"archetype 版本 == 生成物引用的框架版本"这条约定成立）。
+
+已验证（本地已安装的制品，尚未发布到 Central）：
+
+| 验证项 | 结果 |
+|---|---|
+| `archetype:generate` 生成工程 | ✅ 6 个文件齐全，变量全部替换到位 |
+| 用 **JDK 17** 构建生成物 | ✅ `mvn package` 通过（不配 toolchains） |
+| 起服务 → 登录 | ✅ `code: 0`，令牌 43 字符，`roles: [ADMIN]`，20 个权限点 |
+| 中文按字节核验 | ✅ `nickname` = `e8b685e7baa7e7aea1e79086e59198`（`超级管理员`） |
+| archetype 自带 IT（`mvn verify` 自动执行） | ✅ 生成 + `validate` 通过 |
+
+生成物**不含任何 SQL 文件**：`schema-rbac.sql` / `seed-rbac.sql` 在
+`framework-system-starter` 的 jar 里，工程通过 `classpath:` 引用。
+"空工程可直接登录"由此成立，框架对 RBAC 的修复也能通过升版本到达业务方。
+
+#### 🔍 发现 ⑯：Maven 的默认排除规则会悄悄吃掉 `.gitignore`（`.gitattributes` 不受影响）
+
+模板里的 `.gitignore` 在打包阶段消失，生成的工程里没有这个文件，**全程零报错**。
+
+两个反直觉之处：
+
+1. **只吃 `.gitignore`**——`.gitattributes` 不在 plexus 的 `DEFAULTEXCLUDES` 里，
+   同目录下的两个点文件一个在一个不在，很容易误判成"点文件都没进去"或"都进去了"
+2. **`maven-resources-plugin` 的 `addDefaultExcludes=false` 不够**——它只管到
+   `target/classes`（那一层确实有这个文件），真正丢弃发生在 `archetype:jar` 打包时，
+   而那个 goal 没有对应开关
+
+**处置**：把模板文件命名为 `__dot__gitignore`，并在描述符里声明属性 `dot=.`。
+文件名中的 `__属性__` 由生成器替换，落地即 `.gitignore`。
+另附带一条可用的事实：**有默认值的 `requiredProperty` 不会在交互模式下提问**
+（`archetype:generate` 的 `askForDefaultPropertyValues` 默认 `false`），
+所以这个纯内部用途的属性不会打扰使用者。
+
+CI 的 `archetype-e2e` job 分别断言这两个文件存在——这类"静默缺失"只能靠断言守。
+
+#### 🔍 发现 ⑰：Velocity 把行首 `##` 当单行注释，markdown 二级标题会整行消失
+
+archetype 的文件过滤走 Velocity。给 `README.md` 开过滤后，
+每一个 `## 标题` 都会被当作注释整行吃掉，**不报任何错**，
+生成物看起来像是"作者忘了写标题"。
+
+**处置**：不需要变量替换的文件（`README.md` 与两个点文件）在描述符里就不标 `filtered`。
+真要在 markdown 里用变量，得把内容包进 Velocity 的 `#[[ ]]#` 未解析块。
+
+顺带核实掉一个此前的担心：模板 `pom.xml` 里需要**原样保留**的 `${describeadmin.version}`
+**不需要转义**——Velocity 对未定义的引用原样输出。生成物里它确实是 `${describeadmin.version}`。
+（`${symbol_dollar}` 那套写法是给"上下文中确实存在同名变量"的场景准备的，这里用不上。）
+
+#### 🔍 发现 ⑱：archetype 发布到 Central **不需要** sources / javadoc 附件
+
+动手前的担心是：`maven-archetype` 打包没有 Java 源码，
+`maven-javadoc-plugin` 产不出附件，会被 Central Portal 的校验挡下，
+需要造空 jar 绕过。**实测证明这个担心不成立。**
+
+按项目的版本核查纪律直接查 `repo1.maven.org` 上近期发布的 archetype：
+
+| 制品 | 发布时间 | 实际附件 |
+|---|---|---|
+| `com.vaadin:vaadin-archetype-application:25.2.6` | 2026-08 | 仅 `.jar` + `.pom` |
+| `io.helidon.archetypes:helidon-quickstart-se:4.5.3` | 2026-08 | 仅 `.jar` + `.pom` |
+
+两者都是 `packaging=maven-archetype`。因此本模块的发布不需要任何额外配置。

@@ -553,8 +553,15 @@ Git worktree 本身是原生能力，真正需要做的工作是让项目工具�
 | 坑 | 来源 | 现象 | 必须的动作 |
 |---|---|---|---|
 | BOM 驱动默认值失效 | 发现 ② | 父 POM 继承的 `dependencyManagement` 优先级高于 import 的 BOM，实际解析到 Spring Boot 管理的新版驱动，连 5.7 直接失败 | 业务方 `<properties>` 显式写 `<mysql.version>8.2.0</mysql.version>` |
-| 多 JDK 共存 | 发现 ⑥ | 用 `PATH` 上恰好存在的 JDK 编译 `release=17`，报"不支持发行版本 17" | 业务方工程同样要配 `maven-toolchains-plugin` |
+| ~~多 JDK 共存~~ | 发现 ⑥ | 用 `PATH` 上恰好存在的 JDK 编译 `release=17`，报"不支持发行版本 17" | ~~业务方工程同样要配 `maven-toolchains-plugin`~~ **已推翻**，见下 |
 | `@MapperScan` 屏蔽框架 Mapper | 发现 ⑧ | 业务方写了 `@MapperScan("自己的包")`，框架的系统管理 Mapper 全部扫不到，登录即失败 | 不写，或把框架包一并纳入扫描范围 |
+
+> **发现 ⑥ 的处置已于 2026-08-20 推翻**（VERSION_BASELINE 第八轮）。
+> 真实原因是"Maven 当时跑在 JDK 11 上"，而 Maven 跑在 17+ 本就是硬要求
+> （`repackage` 加载不了），满足后 `release=17` 必然能编，toolchains 无增量价值；
+> 反而因业务方开发机普遍没有 `~/.m2/toolchains.xml` 而会直接打死构建。
+> **archetype 不生成 toolchains 配置**，业务方用哪个 JDK 构建是业务方的自由。
+> 该配置只在 `sample-app` 保留，用途是框架团队"以最低支持版本构建"的兼容性验证。
 
 **结论：接入不能靠文档，必须靠模板。** 框架需交付一个 Maven archetype：
 
@@ -674,7 +681,7 @@ npm create @describeadmin/app <项目名>
 
 | 交付物 | 建议阶段 |
 |---|---|
-| `describeadmin-archetype` | 阶段 0（与发布链路同期，它本身就要发布到 Central） |
+| ~~`describeadmin-archetype`~~ **已实现**（2026-08-20，待发布到 Central） | 阶段 0（与发布链路同期，它本身就要发布到 Central） |
 | `@describeadmin/system-ui`（前端系统管理收包） | 阶段 1（与 `framework-system-starter` 对称，宜同期完成） |
 | `npm create @describeadmin/app` | 阶段 1 |
 | `describeadmin-codegen-maven-plugin` | 阶段 1（codegen 本体已有，此处只是补交付形态） |
