@@ -6,7 +6,7 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-21（阶段 E 完成）**
+**最后更新：2026-08-21（阶段 F 完成）**
 
 ---
 
@@ -47,12 +47,13 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 1. **合并 framework#1**，然后重跑 `sample-app` 与插件仓的 CI。
    它是两件事的共同前提：那两个仓的 CI 转绿、插件能发 Central。
-   其余四个 PR 合并顺序不限。阶段 D 已经在同一条分支
+   其余四个 PR 合并顺序不限。阶段 D~F 已经在同一条分支
    （`feat/0.2.0-permission-cache-plugin`）上跟着做完并验证过，不必单独等这一步——
-   合并后 D 的改动自然一起进 main。
-2. **阶段 F：`framework-storage-starter` + `framework-notify-starter`**。E 已经和
-   D 一样在同一条分支上做完并验证过，不必单独等第 1 步——但分支已经积了 A~E 五个阶段，
-   建议合并 framework#1 后尽快切一次，别让差距继续拉大。
+   合并后 D~F 的改动自然一起进 main。**分支目前已积了 A~F 六个阶段，别再让差距继续拉大，
+   合并 framework#1 后尽快切一次。**
+2. **阶段 G：厂商插件（浙政钉登录、钉钉推送）**。是当前分支尚未做的第一个阶段，
+   需要新开插件仓（浙政钉登录用 `AuthProvider`、钉钉推送用阶段 F 刚交付的
+   `NotifyChannel`），按 `docs/registry.md` 的六步流程走，独立成仓、不进 framework reactor。
 3. **framework 0.2.0 发 Maven Central** → 之后插件才能跟着发。
    顺序不可颠倒：插件 `import` 的 `framework-bom` 必须是 Central 上**真实存在**的已发布版本。
 
@@ -69,7 +70,7 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 | **C** | `framework-cache-redis-starter`（第一个真实插件）+ 独立成仓 | ✅ 完成（未发布） |
 | **D** | 数据权限 + `sys_dept.ancestors` | ✅ 完成（未合并） |
 | **E** | 字典 + 参数配置 + 操作日志 | ✅ 完成（未合并） |
-| **F** | `framework-storage-starter` + `framework-notify-starter`（SPI + 零依赖默认实现） | ⬜ **下一个** |
+| **F** | `framework-storage-starter` + `framework-notify-starter`（SPI + 零依赖默认实现） | ✅ 完成（未合并） |
 | **G** | 厂商插件（浙政钉登录、钉钉推送） | ⬜ |
 
 ### A~C 实际产出
@@ -129,15 +130,46 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 - `schema-rbac.sql`/`seed-rbac.sql` 相应更新：同样是破坏性 schema 变更，
   与阶段 D 那次一起重建库即可，不必分两次
 
-### 验证基线（0.2.0 + D + E，全绿）
+### F 实际产出
+
+同一条分支上继续做，未单独开分支。与 B（`CacheProvider`）不同的是，本阶段**没有**
+新增数据库表——F 的定义就是"契约 + 零依赖默认实现"，持久化与端点都留给后续消费方
+（业务代码或阶段 G 的厂商插件）：
+
+- 新模块 `framework-storage-starter`：`StorageProvider`（`put`/`get`/`exists`/
+  `remove`/`url` 五个方法）+ `LocalFileStorageProvider`（零依赖本地磁盘实现，
+  防路径穿越、覆盖开关可配）。不依赖 `spring-boot-starter-web`，`url()` 只返回
+  拼接出的虚拟路径字符串，能否真正提供 HTTP 下载由业务方或未来的 OSS 插件负责——
+  与 `InMemoryCacheProvider`"单机可用，生产换 Redis 插件"是同一组取舍
+- 新模块 `framework-notify-starter`：`NotifyChannel`（`channel()`/`send()`）+
+  `NotifyDispatcher`（按 `channel()` 键收集、路由，构造期发现重复标识/空标识立即
+  抛异常，`send()` 遇到未注册渠道也抛异常而非静默丢弃）+ `LogNotifyChannel`
+  （零依赖日志渠道，标识固定为 `"log"`，与任何插件渠道永久共存，不是"占位后被替换"）。
+  **这是本阶段与 `CacheProvider`/`TokenStore` 模式的唯一实质分歧**：通知天然多实现
+  共存，不是"单一默认实现 + `@ConditionalOnMissingBean` 整体替换"的形状——未来的
+  通知插件（钉钉/企业微信/短信）**不能**照抄 `framework-cache-redis-starter` 那种
+  `@ConditionalOnMissingBean(NotifyChannel.class)` 写法，否则会被核心已注册的
+  `LogNotifyChannel` 静默挡掉；插件渠道应无条件注册（只受自身
+  `@ConditionalOnProperty` 控制），真正的冲突检测交给 `NotifyDispatcher` 构造函数
+  ——两个类的 javadoc 都已把这条陷阱写清楚
+- `framework/pom.xml` 的 `enforce-core-thin` 顺带补上了此前缺失的排除坐标
+  （阿里云 OSS/腾讯云 COS/AWS S3/MinIO 等对象存储 SDK，钉钉/企业微信/短信等厂商
+  推送 SDK）——此前这条约束只是 pom 头部注释里的君子协定，没有构建期强制力
+- 两个模块的单测均对齐 `InMemoryCacheProviderTest` 的 `@Nested`/`@DisplayName`
+  + AssertJ 风格，含并发正确性测试（`LocalFileStorageProviderTest` 并发写入不同
+  key、`NotifyDispatcherTest` 并发 send 调用不丢失）；`LogNotifyChannelTest` 用
+  Logback `ListAppender` 断言日志的**具体内容**而非"有没有打印一行日志"，直接对应
+  CLAUDE.md 3.6 的测试规范
+
+### 验证基线（0.2.0 + D + E + F，全绿）
 
 | 线 | 结果 |
 |---|---|
-| framework 单测 | 71/71 |
+| framework 单测 | 98/98（新增 storage 15、notify 12） |
 | 插件（独立仓） | 31/31 |
 | sample-app IT @ MySQL **5.7** | 64/64 |
 | sample-app IT @ MySQL **8.4** | 64/64 |
-| framework `clean verify -Prelease -Dgpg.skip=true` | 通过（含 `enforce-core-thin`） |
+| framework `clean verify -Prelease -Dgpg.skip=true` | 通过（含 `enforce-core-thin`，新增排除坐标未误伤现有模块） |
 
 > `AbstractMySqlIntegrationTest` 默认镜像是 **5.7**，跑 8.4 要显式加
 > `-Dmysql.image=mysql:8.4`。只跑默认的那次等于只验证了一条线。
