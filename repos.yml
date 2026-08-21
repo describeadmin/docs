@@ -17,7 +17,8 @@ host: github.com
 #   ├── docs/                ← 本仓库所在处（元信息）
 #   ├── framework/           ← 独立 git 仓库
 #   ├── sample-app/          ← 独立 git 仓库
-#   └── frontend/            ← 独立 git 仓库
+#   ├── frontend/            ← 独立 git 仓库
+#   └── sample-frontend/     ← 本地验证用目录，尚未 git 化/推送远端，见下
 #
 # 各仓库检出到本文件所在目录（docs/）的同级。
 
@@ -135,25 +136,28 @@ repos:
     upstream: https://github.com/vbenjs/vue-vben-admin
     upstream_snapshot: v5.7.0
     upstream_tracking: false   # 已与上游断开，不做 merge
-    app: apps/admin            # 唯一应用，由官方 apps/web-ele 更名而来
+    app: apps/admin            # 框架自己的联调 playground，由官方 apps/web-ele 更名而来
     note: |
       packages/ 下全部代码的维护责任（含安全修复）自快照之日起由框架团队承担，
       上游的更新与 bugfix 不会自动流入。见 NOTICE.md。
       应用直连真实后端，不带 mock —— 上游的 apps/backend-mock 已删除。
+      ⚠️ apps/admin 自 2026-08-21 起【不再是业务方的接入起点】（与 sample-app 同一时点的
+      同一类调整）——那是 @describeadmin/create-app 的职责，见该包 README。
     publishes:
-      # ⚠️ 尚未发布。这些包目前以源码形式（exports 指向 src/*.ts）在 workspace 内互引，
-      #    要真正 publish 还需补 tsdown 构建产物与 publishConfig，属未完成事项。
+      # ⚠️ 尚未发布到 npm registry。这些包已具备 publishConfig/files/exports 与 tsdown
+      #    构建产物，结构上 publish-ready，但发布链路（changeset publish）尚未打通——
+      #    本地验证改用 `pnpm pack` + file: 依赖，见 sample-frontend 仓。
       - "@describeadmin/ui"
       - "@describeadmin/layouts"
       - "@describeadmin/access"
       - "@describeadmin/request"
-      # planned（9.3.1）：系统管理四个页面（实测 1,376 行）目前在 apps/admin 的应用层，
-      # 与后端 framework-system-starter 不对称——业务方复制走应用外壳后，
-      # 框架对这些页面的修复将无法到达。收进本包后业务方只保留路由挂载点。
+      # ~~planned（9.3.1）~~ 已实现（2026-08-21）：系统管理四页面 + 首页统计卡片
+      # （原 1,376 行 + dashboard）已收进本包，与后端 framework-system-starter 对称。
+      # apps/admin 现在反过来消费本包（workspace:*），验证"框架自己也吃自己的狗粮"。
       - "@describeadmin/system-ui"
-      # planned（9.3.2）：`npm create @describeadmin/app` 的实现包。
-      # 生成业务方的应用外壳（收走 system-ui 后约 2,200 行），替代 fork apps/admin。
-      # 外壳不会自动升级，因此必须尽可能薄——这是升级机制成立的前提，不是洁癖。
+      # ~~planned（9.3.2）~~ 已实现（2026-08-21）：`npm create @describeadmin/app` 的
+      # 实现包，template/ 是收走 system-ui 后 apps/admin 外壳的裁剪副本（手工维护同步，
+      # 见包内 README）。已用它生成 sample-frontend 并跑通登录 + 系统管理 CRUD 全链路。
       - "@describeadmin/create-app"
 
   # ---------- 样板 / 验证 ----------
@@ -169,3 +173,18 @@ repos:
       ⚠️ 自 0.1.1 起【不再是业务方的接入起点】——那是 describeadmin-archetype 的职责。
       本仓保留的 maven-toolchains-plugin 也只服务于「以最低支持版本 JDK 17 构建」这个
       框架侧验证目的，业务工程不应照抄（见 VERSION_BASELINE 发现 ⑥ 的修正）。
+
+  - name: sample-frontend
+    group: sample
+    status: active
+    lang: ts
+    desc: 前端的业务模拟样板，与 sample-app 对称——验证前端包能否被真正外部消费
+    note: |
+      测试夹具，【不是产品的一部分】，永远不发布到 npm registry，也尚未推送 GitHub 远端
+      （目前只是工作区里的本地目录）。由 `npm create @describeadmin/app` 生成，之后
+      按业务需要接了一个示例模块。
+      不属于 frontend 的 pnpm workspace，@describeadmin/* 依赖尚未真正发布前，用
+      `pnpm pack` 出的本地 tarball（脚本见 scripts/pack-local-deps.sh）+ pnpm 的
+      overrides 模拟——效果等价于真实 npm 安装，只是省了发布这一步。
+      已验证：登录 → 菜单树（component 路径与后端 seed-rbac.sql 对上）→
+      system-ui 提供的用户/角色/菜单/部门管理 CRUD，全链路可用。
