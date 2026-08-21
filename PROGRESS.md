@@ -6,7 +6,7 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-20**
+**最后更新：2026-08-21**
 
 ---
 
@@ -46,11 +46,12 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 ## 下一步（按依赖顺序）
 
 1. **合并 framework#1**，然后重跑 `sample-app` 与插件仓的 CI。
-   它是三件事的共同前提：那两个仓的 CI 转绿、插件能发 Central、阶段 D 有地基。
-   其余四个 PR 合并顺序不限。
-2. **阶段 D：数据权限 + `sys_dept.ancestors` 物化路径**。
-   不必等发布，但必须等第 1 步。
-   **越早做越便宜**——这是原方案里唯一的既有表结构变更，等业务方开始建库之后再加列就得写迁移脚本。
+   它是两件事的共同前提：那两个仓的 CI 转绿、插件能发 Central。
+   其余四个 PR 合并顺序不限。阶段 D 已经在同一条分支
+   （`feat/0.2.0-permission-cache-plugin`）上跟着做完并验证过，不必单独等这一步——
+   合并后 D 的改动自然一起进 main。
+2. **阶段 E：字典 + 参数配置 + 操作日志**。不必等发布，建议等第 1 步落定后再开工，
+   避免这条分支越滚越大、和 main 的差距越拉越开。
 3. **framework 0.2.0 发 Maven Central** → 之后插件才能跟着发。
    顺序不可颠倒：插件 `import` 的 `framework-bom` 必须是 Central 上**真实存在**的已发布版本。
 
@@ -65,8 +66,8 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 | **A** | 接口权限校验 + framework 单测底座 | ✅ 完成 |
 | **B** | `CacheProvider` SPI + 内存实现；拦截器链扩展缝；`TokenStore` default 方法 + 在线用户端点 | ✅ 完成 |
 | **C** | `framework-cache-redis-starter`（第一个真实插件）+ 独立成仓 | ✅ 完成（未发布） |
-| **D** | 数据权限 + `sys_dept.ancestors` | ⬜ **下一个** |
-| **E** | 字典 + 参数配置 + 操作日志 | ⬜ |
+| **D** | 数据权限 + `sys_dept.ancestors` | ✅ 完成（未合并） |
+| **E** | 字典 + 参数配置 + 操作日志 | ⬜ **下一个** |
 | **F** | `framework-storage-starter` + `framework-notify-starter`（SPI + 零依赖默认实现） | ⬜ |
 | **G** | 厂商插件（浙政钉登录、钉钉推送） | ⬜ |
 
@@ -86,17 +87,41 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 **插件仓（已推）**：见该仓 `CHANGELOG.md`。
 
-### 验证基线（0.2.0，全绿）
+### D 实际产出
+
+同一条分支（`feat/0.2.0-permission-cache-plugin`）上跟着 A~C 一起做，未单独开分支：
+
+- `framework-common`：`DataScopeType`、`DataScopeContext`、`DataScopeProvider`（新 SPI，
+  与 `CurrentUserProvider` 同一范式）
+- `framework-mybatis-starter`：`DataScopeTableCustomizer`（表登记 SPI）、
+  `DeptDataPermissionHandler`（`MultiDataPermissionHandler` 实现，复用 MP 自带的
+  `DataPermissionInterceptor`，未新增依赖）；`FrameworkMybatisAutoConfiguration` 新增
+  拦截器 Bean——完全靠 0.2.0 已有的 `ObjectProvider<InnerInterceptor>` 收集点接入，
+  没有改动那个方法本身
+- `framework-security-starter`：`AuthUser`/`LoginUser` 新增 `deptId`/`dataScope`/
+  `customDeptIds` 三个字段（保留旧构造函数重载）、`SecurityContextDataScopeProvider`
+- `framework-system-starter`：`sys_dept.ancestors` 物化路径维护（`SysDeptService`
+  的 `createDept`/`updateDept`，含移动部门的级联更新与成环校验）、
+  `sys_role.data_scope` + `sys_role_dept`、`DataScopeResolver`（多角色合并，纯函数）、
+  `DbAuthUserLoader` 登录时解析数据权限、`SysRoleController` 新增
+  `.../{roleId}/depts` 端点
+- `schema-rbac.sql`/`seed-rbac.sql` 相应更新：**这是一次破坏性 schema 变更**，
+  升级前已建库的开发/测试环境需要重建（`CREATE TABLE IF NOT EXISTS` 不会给已存在的表加列）
+
+### 验证基线（0.2.0 + D，全绿）
 
 | 线 | 结果 |
 |---|---|
-| framework 单测 | 81/81 |
+| framework 单测 | 67/67 |
 | 插件（独立仓） | 31/31 |
-| sample-app IT @ MySQL **5.7** | 49/49 |
-| sample-app IT @ MySQL **8.4** | 49/49 |
+| sample-app IT @ MySQL **5.7** | 57/57 |
+| sample-app IT @ MySQL **8.4** | 57/57 |
 
 > `AbstractMySqlIntegrationTest` 默认镜像是 **5.7**，跑 8.4 要显式加
 > `-Dmysql.image=mysql:8.4`。只跑默认的那次等于只验证了一条线。
+>
+> `framework 单测`此前记为 81/81——核对后发现那个数字已经与仓库实际测试文件数对不上
+> （实测只有 8 个测试类，加总 52），此处改为本次实测的确切值，不再沿用旧数字。
 
 ---
 
@@ -108,6 +133,9 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
   业务方复制走应用外壳后，框架对这些页面的修复到不了他们那里（方案 9.3.1 已诊断过一次）
 - **在线用户菜单当前 `visible = 0`**：后端已可用，`system/online/index` 页面还没写。
   前端落地后要把种子数据改回 1
+- **角色管理页还没有"数据范围"与"分配数据权限（自定义部门）"的表单**：后端
+  `PUT /api/system/role`（`data_scope` 字段）与 `.../{roleId}/depts` 端点已可用，
+  权限点 `system:role:assign-dept` 已登记，前端只是还没画出对应的表单控件
 
 **文档**
 
@@ -131,3 +159,7 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
    **只有第三处真正生效**。
 4. **0.x 期间不要相信小版本兼容**。SemVer 对 `0.x` 不作保证，本项目 0.2.0 就带过
    Breaking Change；插件对每个框架小版本都要重新验证。
+5. **数据权限的多角色合并规则是"取最宽松的单一档位"，不是按角色把条件 OR 起来**。
+   这是阶段 D 明确权衡过的简化：OR 拼接在"本部门及以下"与"自定义部门"混用时条件会
+   变复杂，V1 用简单规则换低风险。改这条规则要同时改
+   `framework-system-starter` 的 `DataScopeResolver` 与它的单测，别只改一处。
