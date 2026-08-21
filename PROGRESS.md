@@ -8,22 +8,22 @@
 
 **最后更新：2026-08-21（阶段 F 完成）**
 
----
+***
 
 ## ⚠️ 先看这个：五个 PR 待合并
 
 **0.2.0 的全部工作已提交并推送，但都还在分支上没合进 main。**
 框架的 `main` 因此仍是 **0.1.1**，下次开工前先确认这一点。
 
-| 仓库 | PR | CI | 说明 |
-|---|---|---|---|
-| `framework` | [#1](https://github.com/describeadmin/framework/pull/1) | ✅ 全绿 | **先合这个**，其余两个仓的 CI 依赖它 |
-| `docs` | [#1](https://github.com/describeadmin/docs/pull/1) | 无 CI | 本文件 + `registry.md` |
-| `codegen` | [#1](https://github.com/describeadmin/codegen/pull/1) | ✅ 通过 | 不依赖 framework，可随时合 |
-| `frontend` | [#1](https://github.com/describeadmin/frontend/pull/1) | — | 仅 `CLAUDE.md` 同步 |
+| 仓库           | PR                                                       | CI   | 说明                     |
+| ------------ | -------------------------------------------------------- | ---- | ---------------------- |
+| `framework`  | [#1](https://github.com/describeadmin/framework/pull/1)  | ✅ 全绿 | **先合这个**，其余两个仓的 CI 依赖它 |
+| `docs`       | [#1](https://github.com/describeadmin/docs/pull/1)       | 无 CI | 本文件 + `registry.md`    |
+| `codegen`    | [#1](https://github.com/describeadmin/codegen/pull/1)    | ✅ 通过 | 不依赖 framework，可随时合     |
+| `frontend`   | [#1](https://github.com/describeadmin/frontend/pull/1)   | —    | 仅 `CLAUDE.md` 同步       |
 | `sample-app` | [#1](https://github.com/describeadmin/sample-app/pull/1) | ❌ 见下 | **合完 framework 后重跑即绿** |
 
-**`sample-app` 与插件仓的 CI 现在都是红的，原因相同**——两者的 CI 都会去拿
+**`sample-app`** **与插件仓的 CI 现在都是红的，原因相同**——两者的 CI 都会去拿
 `describeadmin/framework` 的 `main`，而那里还是 0.1.1：
 
 ```
@@ -34,22 +34,22 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 插件仓那条是**守卫步骤主动报的**，设计如此——静默用错版本比直接失败更糟。
 合并 framework#1 后重跑这两个仓的 CI 即可转绿。
 
-| 仓库 | Central / npm | GitHub main |
-|---|---|---|
-| `framework` | **0.1.1** | 0.1.1（0.2.0 在 PR #1 里） |
-| `framework-cache-redis-starter` | 未发布 | `0.2.0-SNAPSHOT` ✅ 已在 main |
-| `frontend` | 未发布 | `0.1.0` |
-| `codegen` | 未发布 | — |
+| 仓库                              | Central / npm | GitHub main                |
+| ------------------------------- | ------------- | -------------------------- |
+| `framework`                     | **0.1.1**     | 0.1.1（0.2.0 在 PR #1 里）     |
+| `framework-cache-redis-starter` | 未发布           | `0.2.0-SNAPSHOT` ✅ 已在 main |
+| `frontend`                      | 未发布           | `0.1.0`                    |
+| `codegen`                       | 未发布           | —                          |
 
----
+***
 
 ## 下一步（按依赖顺序）
 
 1. **合并 framework#1**，然后重跑 `sample-app` 与插件仓的 CI。
    它是两件事的共同前提：那两个仓的 CI 转绿、插件能发 Central。
-   其余四个 PR 合并顺序不限。阶段 D~F 已经在同一条分支
+   其余四个 PR 合并顺序不限。阶段 D\~F 已经在同一条分支
    （`feat/0.2.0-permission-cache-plugin`）上跟着做完并验证过，不必单独等这一步——
-   合并后 D~F 的改动自然一起进 main。**分支目前已积了 A~F 六个阶段，别再让差距继续拉大，
+   合并后 D\~F 的改动自然一起进 main。**分支目前已积了 A\~F 六个阶段，别再让差距继续拉大，
    合并 framework#1 后尽快切一次。**
 2. **阶段 G：厂商插件（浙政钉登录、钉钉推送）**。是当前分支尚未做的第一个阶段，
    需要新开插件仓（浙政钉登录用 `AuthProvider`、钉钉推送用阶段 F 刚交付的
@@ -57,23 +57,23 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 3. **framework 0.2.0 发 Maven Central** → 之后插件才能跟着发。
    顺序不可颠倒：插件 `import` 的 `framework-bom` 必须是 Central 上**真实存在**的已发布版本。
 
----
+***
 
 ## 阶段进度
 
-分期定义见已批准的能力规划（核心/插件判据 + A~G 分期）。
+分期定义见已批准的能力规划（核心/插件判据 + A\~G 分期）。
 
-| 阶段 | 内容 | 状态 |
-|---|---|---|
-| **A** | 接口权限校验 + framework 单测底座 | ✅ 完成 |
-| **B** | `CacheProvider` SPI + 内存实现；拦截器链扩展缝；`TokenStore` default 方法 + 在线用户端点 | ✅ 完成 |
-| **C** | `framework-cache-redis-starter`（第一个真实插件）+ 独立成仓 | ✅ 完成（未发布） |
-| **D** | 数据权限 + `sys_dept.ancestors` | ✅ 完成（未合并） |
-| **E** | 字典 + 参数配置 + 操作日志 | ✅ 完成（未合并） |
+| 阶段    | 内容                                                                      | 状态        |
+| ----- | ----------------------------------------------------------------------- | --------- |
+| **A** | 接口权限校验 + framework 单测底座                                                 | ✅ 完成      |
+| **B** | `CacheProvider` SPI + 内存实现；拦截器链扩展缝；`TokenStore` default 方法 + 在线用户端点     | ✅ 完成      |
+| **C** | `framework-cache-redis-starter`（第一个真实插件）+ 独立成仓                          | ✅ 完成（未发布） |
+| **D** | 数据权限 + `sys_dept.ancestors`                                             | ✅ 完成（未合并） |
+| **E** | 字典 + 参数配置 + 操作日志                                                        | ✅ 完成（未合并） |
 | **F** | `framework-storage-starter` + `framework-notify-starter`（SPI + 零依赖默认实现） | ✅ 完成（未合并） |
-| **G** | 厂商插件（浙政钉登录、钉钉推送） | ⬜ |
+| **G** | 厂商插件（浙政钉登录、钉钉推送）                                                        | ⬜         |
 
-### A~C 实际产出
+### A\~C 实际产出
 
 **framework 侧（未提交）**
 
@@ -91,7 +91,7 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 ### D 实际产出
 
-同一条分支（`feat/0.2.0-permission-cache-plugin`）上跟着 A~C 一起做，未单独开分支：
+同一条分支（`feat/0.2.0-permission-cache-plugin`）上跟着 A\~C 一起做，未单独开分支：
 
 - `framework-common`：`DataScopeType`、`DataScopeContext`、`DataScopeProvider`（新 SPI，
   与 `CurrentUserProvider` 同一范式）
@@ -137,15 +137,19 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 （业务代码或阶段 G 的厂商插件）：
 
 - 新模块 `framework-storage-starter`：`StorageProvider`（`put`/`get`/`exists`/
-  `remove`/`url` 五个方法）+ `LocalFileStorageProvider`（零依赖本地磁盘实现，
-  防路径穿越、覆盖开关可配）。不依赖 `spring-boot-starter-web`，`url()` 只返回
-  拼接出的虚拟路径字符串，能否真正提供 HTTP 下载由业务方或未来的 OSS 插件负责——
-  与 `InMemoryCacheProvider`"单机可用，生产换 Redis 插件"是同一组取舍
+  `remove`/`url` 五个方法，另加 `default String presignedUrl(key, expiry)`）+
+  `LocalFileStorageProvider`（零依赖本地磁盘实现，防路径穿越、覆盖开关可配）。
+  不依赖 `spring-boot-starter-web`，`url()` 只返回拼接出的虚拟路径字符串，
+  能否真正提供 HTTP 下载由业务方或未来的 OSS 插件负责——与
+  `InMemoryCacheProvider`"单机可用，生产换 Redis 插件"是同一组取舍。
+  `presignedUrl` 是设计评审时补的扩展点：S3 兼容存储的真实部署几乎总是私有桶，
+  `url()` 返回的地址通常不可访问，业务方应改用 `presignedUrl` 取限时签名地址；
+  本地实现没有"签名"概念，`default` 方法退化为 `url()` 即可，不需要重写
 - 新模块 `framework-notify-starter`：`NotifyChannel`（`channel()`/`send()`）+
   `NotifyDispatcher`（按 `channel()` 键收集、路由，构造期发现重复标识/空标识立即
   抛异常，`send()` 遇到未注册渠道也抛异常而非静默丢弃）+ `LogNotifyChannel`
   （零依赖日志渠道，标识固定为 `"log"`，与任何插件渠道永久共存，不是"占位后被替换"）。
-  **这是本阶段与 `CacheProvider`/`TokenStore` 模式的唯一实质分歧**：通知天然多实现
+  **这是本阶段与** **`CacheProvider`/`TokenStore`** **模式的唯一实质分歧**：通知天然多实现
   共存，不是"单一默认实现 + `@ConditionalOnMissingBean` 整体替换"的形状——未来的
   通知插件（钉钉/企业微信/短信）**不能**照抄 `framework-cache-redis-starter` 那种
   `@ConditionalOnMissingBean(NotifyChannel.class)` 写法，否则会被核心已注册的
@@ -155,20 +159,20 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 - `framework/pom.xml` 的 `enforce-core-thin` 顺带补上了此前缺失的排除坐标
   （阿里云 OSS/腾讯云 COS/AWS S3/MinIO 等对象存储 SDK，钉钉/企业微信/短信等厂商
   推送 SDK）——此前这条约束只是 pom 头部注释里的君子协定，没有构建期强制力
-- 两个模块的单测均对齐 `InMemoryCacheProviderTest` 的 `@Nested`/`@DisplayName`
-  + AssertJ 风格，含并发正确性测试（`LocalFileStorageProviderTest` 并发写入不同
-  key、`NotifyDispatcherTest` 并发 send 调用不丢失）；`LogNotifyChannelTest` 用
+- 两个模块的单测均对齐 `InMemoryCacheProviderTest` 的风格（`@Nested`/`@DisplayName`
+  分组 + AssertJ 断言），含并发正确性测试（`LocalFileStorageProviderTest` 并发写入
+  不同 key、`NotifyDispatcherTest` 并发 send 调用不丢失）；`LogNotifyChannelTest` 用
   Logback `ListAppender` 断言日志的**具体内容**而非"有没有打印一行日志"，直接对应
   CLAUDE.md 3.6 的测试规范
 
 ### 验证基线（0.2.0 + D + E + F，全绿）
 
-| 线 | 结果 |
-|---|---|
-| framework 单测 | 98/98（新增 storage 15、notify 12） |
-| 插件（独立仓） | 31/31 |
-| sample-app IT @ MySQL **5.7** | 64/64 |
-| sample-app IT @ MySQL **8.4** | 64/64 |
+| 线                                                  | 结果                                      |
+| -------------------------------------------------- | --------------------------------------- |
+| framework 单测                                       | 98/98（新增 storage 15、notify 12）          |
+| 插件（独立仓）                                            | 31/31                                   |
+| sample-app IT @ MySQL **5.7**                      | 64/64                                   |
+| sample-app IT @ MySQL **8.4**                      | 64/64                                   |
 | framework `clean verify -Prelease -Dgpg.skip=true` | 通过（含 `enforce-core-thin`，新增排除坐标未误伤现有模块） |
 
 > `AbstractMySqlIntegrationTest` 默认镜像是 **5.7**，跑 8.4 要显式加
@@ -176,10 +180,10 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 ### 前端：system-ui + create-app 落地（2026-08-21）
 
-对齐 develop_plan.md §9.3.1/§9.3.2、`repos.yml` 里早先登记的 `planned` 交付物，
+对齐 develop\_plan.md §9.3.1/§9.3.2、`repos.yml` 里早先登记的 `planned` 交付物，
 本轮把两者都做完并做了真实的外部消费验证（不是只看编译）：
 
-- **新增 `@describeadmin/system-ui`**（`frontend/packages/effects/system-ui`）：收纳
+- **新增** **`@describeadmin/system-ui`**（`frontend/packages/effects/system-ui`）：收纳
   系统管理四页面（dept/menu/role/user）+ 首页统计卡片（`dashboard/index`，随它一起搬走——
   它展示的是 `framework-system-starter` 四个实体的统计数，且 `component` 值被
   `seed-rbac.sql` 硬编码为登录后必须存在的首页路由，本质是框架基础设施不是业务内容）。
@@ -188,10 +192,10 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
   依赖本包（`workspace:*`），`router/access.ts` 的 `pageMap` 与包导出的 `systemPageMap`
   合并——`ComponentRecordType` 本来就支持这种显式 key→组件 的合并方式，不需要改
   `generateRoutesByBackend`。
-- **`apps/admin` 改为框架自己的联调 playground**，不再是业务方起点（措辞对齐
+- **`apps/admin`** **改为框架自己的联调 playground**，不再是业务方起点（措辞对齐
   `sample-app` README 的等价表述）。同时删掉了 `views/project`/`api/project.ts`
   （codegen 产出的业务示例，不属于框架仓）与上游遗留的 `locales/langs/*/demos.json`。
-- **新增 `@describeadmin/create-app`**（`frontend/packages/create-app`）：
+- **新增** **`@describeadmin/create-app`**（`frontend/packages/create-app`）：
   `npm create @describeadmin/app <项目名>` 的实现包。`template/` 是收走 system-ui 后
   `apps/admin` 外壳的裁剪副本，`vite.config.ts`/`tsconfig*.json` 改为不依赖
   `internal/vite-config`、`internal/tsconfig`（那两个是框架自身构建工具，从未打算发给
@@ -207,7 +211,7 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
   只是暂时没精力挪目录，先解决"能不能被外部消费"）。`theme.css` 的 `@source` 新增一条
   `../../`，在原有四条 monorepo 专用路径之外，让业务方安装的 `node_modules/@describeadmin/`
   也能被 Tailwind 扫描到。
-- **新建 `sample-frontend`**（工作区根目录同级，`describe-admin/sample-frontend/`，
+- **新建** **`sample-frontend`**（工作区根目录同级，`describe-admin/sample-frontend/`，
   与 `sample-app` 对称）：本地跑 `create-app` 生成骨架，`@describeadmin/*` 依赖用
   `pnpm pack` 出的本地 tarball + `pnpm-workspace.yaml` 的 `overrides` 模拟外部安装
   （脚本 `sample-frontend/scripts/pack-local-deps.sh`，效果等价于真实 npm 安装，
@@ -224,23 +228,23 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 `pnpm run check:circular` 未新增循环依赖（既有的三条循环与本次改动无关，在
 `@core/ui-kit/form-ui` 和 `effects/plugins/vxe-table` 里，本轮未触碰）。
 
----
+***
 
 ## 已知欠账
 
 **前端**（每进核心一个模块就多一页）
 
-- **在线用户菜单当前 `visible = 0`**：后端已可用，`system/online/index` 页面还没写。
+- **在线用户菜单当前** **`visible = 0`**：后端已可用，`system/online/index` 页面还没写。
   这个页面按今天的结论也该进 `@describeadmin/system-ui`（和 dept/menu/role/user 同类），
   不要加回 `apps/admin`。前端落地后要把种子数据改回 1
 - **角色管理页还没有"数据范围"与"分配数据权限（自定义部门）"的表单**：后端
   `PUT /api/system/role`（`data_scope` 字段）与 `.../{roleId}/depts` 端点已可用，
   权限点 `system:role:assign-dept` 已登记，前端只是还没画出对应的表单控件
   （改动位置是 `system-ui` 包里的 `views/role/index.vue`，不是 `apps/admin`）
-- **`@describeadmin/create-app` 的 `template/` 与 `apps/admin` 靠手工同步**，没有
+- **`@describeadmin/create-app`** **的** **`template/`** **与** **`apps/admin`** **靠手工同步**，没有
   自动化机制——`apps/admin` 的 router/layouts/adapter 等外壳代码变了，容易忘记同步
   `template/`，包内 README 写了这条维护责任但没有 CI 校验兜底
-- **`internal/tailwind-config` 只是拿掉了 `private: true`，没有搬出 `internal/`**：
+- **`internal/tailwind-config`** **只是拿掉了** **`private: true`，没有搬出** **`internal/`**：
   它的 `/theme` 导出是运行时会被消费的 CSS，分类上更应该在 `packages/` 而非
   `internal/`（后者语义是"框架自身构建工具，从不发给业务方"）。目录搬迁涉及改
   `pnpm-workspace.yaml`、`repos.yml` 与全部引用，本轮为了不放大改动范围没做，
@@ -257,24 +261,24 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 **文档**
 
-- `develop_plan.md` 第十章路线图仍是 v0.4 的阶段 -1~6，与 A~G 分期并行存在，尚未合并
+- `develop_plan.md` 第十章路线图仍是 v0.4 的阶段 -1\~6，与 A\~G 分期并行存在，尚未合并
 
 **发布链路**
 
 - `codegen` 仓没有 `release.yml`，发布链路未打通（framework 仓已有）
 - 前端 `packages/` 结构上已经 publish-ready（`publishConfig`/`files`/`exports`/tsdown
   构建产物齐全，`system-ui`/`create-app`/`tailwind-config` 本轮补齐），但**从未真正
-  执行过 `changeset publish`**，npm registry 上没有任何 `@describeadmin/*`——本地验证
+  执行过** **`changeset publish`**，npm registry 上没有任何 `@describeadmin/*`——本地验证
   改用 `pnpm pack` + `file:` 依赖（见 `sample-frontend/scripts/pack-local-deps.sh`），
   这条路径已验证可行，但终究是发布链路的替代品，不是发布链路本身
 
----
+***
 
 ## 本轮定下的、容易忘的约束
 
 1. **插件一律独立成仓**，不再进 framework 仓当 module。新建插件仓照 `registry.md`
    末节的六步做。
-2. **`framework-bom` 刻意不仲裁插件版本**。写进去会让业务方拿到一个与框架同号、
+2. **`framework-bom`** **刻意不仲裁插件版本**。写进去会让业务方拿到一个与框架同号、
    根本不存在的制品，而报错只说"找不到"。
 3. **插件必须声明最低框架版本**，三处保持一致：`registry.md` 表格、POM 里 import 的
    `framework-bom` 版本、代码常量 + `FrameworkVersion.requireCompatible()` 启动期自检。
@@ -290,15 +294,16 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
    不同业务方可能要不同处理），改用 `provideSystemApiClient(client)` 由消费方在
    `requestClient` 建好之后注入一次。以后新增类似"框架包需要网络请求"的场景，
    照这个模式做，不要在包里自建一个新的 axios 实例。
-7. **`packages/effects/system-ui` 导出的 `systemPageMap`，key 必须与后端
-   `sys_menu.component` 规范化后的值逐字对上**（`/system/dept/index.vue` 这种形式，
+7. **`packages/effects/system-ui`** **导出的** **`systemPageMap`，key 必须与后端
+   `sys_menu.component`** **规范化后的值逐字对上**（`/system/dept/index.vue` 这种形式，
    规则见 `generateRoutesByBackend` 的 `normalizeViewPath`）。写错的症状是静默 404，
    不会报错——新增页面时对照 `seed-rbac.sql`/`menu-*.sql` 核实，别凭记忆写。
-8. **子类覆写 `BaseController` 的 create/update/delete 不需要额外标 `@OperLog`**。
+8. **子类覆写** **`BaseController`** **的 create/update/delete 不需要额外标** **`@OperLog`**。
    Spring AOP 的 `execution(BaseController+.create(..))` 按方法签名匹配整个类型层级，
    覆写不影响命中；额外标注反而会让同一次调用被记两条日志。`@OperLog` 只用于
    方法名不是 create/update/delete 的自定义端点。
-9. **操作日志切面必须捕获 `Throwable` 而不是只捕获业务失败**。`GlobalExceptionHandler`
+9. **操作日志切面必须捕获** **`Throwable`** **而不是只捕获业务失败**。`GlobalExceptionHandler`
    把 `BizException` 转成 HTTP 200 + 错误码，发生在 Spring MVC 的异常解析阶段，
    晚于 AOP 环绕通知——`OperLogAspect` 的 `catch` 块看到的是原始异常，
    这也是"失败的操作也要落日志"这条能成立的前提，改动异常处理链路时留意别破坏这个时序。
+
