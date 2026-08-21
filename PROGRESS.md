@@ -6,7 +6,7 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-21（阶段 F 完成 + 前端追平：dict/config/oper-log/online + 角色数据权限表单）**
+**最后更新：2026-08-21（阶段 F 完成 + 前端追平：dict/config/oper-log/online + 角色数据权限表单 + 角色级自定义首页 home_path）**
 
 ***
 
@@ -261,6 +261,56 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 - 字典/字典数据表单用了本地的 `DictTypeForm`/`DictDataForm` 接口而不是直接
   `reactive<SysDictType>`——`status` 字段在实体上可空，`ElSwitch` 的 v-model 不接受
   null，与 `dept/index.vue` 的 `DeptForm` 是同一处理方式
+
+### 角色级自定义首页 home_path（2026-08-21）
+
+用户发现"首页只有一个全局 `defaultHomePath`，业务方没有入口自定义"，且 Vben 内核
+其实早留了 `userInfo.homePath` 这个优先级更高的覆盖位，只是后端从没填过。本轮把这条
+腿接上，做**角色级**（不做用户级覆盖，用户已明确选择）：
+
+- **`framework`**（`framework-security-starter` + `framework-system-starter`，
+  同样在 `feat/0.2.0-permission-cache-plugin` 分支上，依赖阶段 D 加的
+  `sort`/`data_scope`/`RoleScope` 这套基础设施）：
+  - `sys_role` 新增 `home_path VARCHAR(191) NULL` 列（`schema-rbac.sql`）——**已建库
+    的开发/测试环境需要重建或手动** **`ALTER TABLE`**，`CREATE TABLE IF NOT EXISTS`
+    不会给存量表加列，这是阶段 D 的 `ancestors` 就踩过的同一个坑，本轮在本地
+    `da-mysql` 上手动 `ALTER TABLE` 了一次
+  - 新增 `HomePathResolver`（纯函数，风格对齐 `DataScopeResolver`）：多角色按
+    `sort` 升序取第一个非空 `home_path`，全部为空则返回 `null`
+  - `SysRelationMapper.selectDataScopesByUserId` 顺带查出 `home_path` 并加
+    `ORDER BY r.sort`（首页合并需要确定性顺序，之前这条查询没排序）
+  - `AuthUser`/`LoginUser`（均在 `api` 包，兼容性承诺范围）新增 `homePath` 字段，
+    走新增构造函数重载而非改签名，不是 Breaking Change——手法与阶段 D 加
+    `deptId`/`dataScope`/`customDeptIds` 时完全一致
+  - `AuthController` 零改动：`/auth/login`、`/auth/me` 都是直接序列化整个
+    `LoginUser`，加字段自动生效
+  - 新增 `HomePathResolverTest`（5 例）+ `FrameworkRuntimeIT` 补两个用例
+    （角色未设置首页时 `homePath` 为 `null`；设置后登录携带该路径），均用真实
+    MySQL 5.7 Testcontainers 跑过
+- **`frontend`**（`@describeadmin/system-ui`）：`api/types.ts` 的 `SysRole` 加
+  `homePath` 字段；`views/role/index.vue` 编辑弹窗新增"首页"字段，`ElTreeSelect`
+  数据源复用已有的 `getMenuTreeApi()`，只允许选中 `menuType === 'MENU'` 且有
+  `path` 的真实页面节点，目录/按钮节点用 `disabled` 函数标灰仅做分组展示——避免
+  选到假路径复现 `defaultHomePath` 那个已知的 404 坑
+- **三处外壳文件同步改**（`sample-frontend`、`frontend/apps/admin`、
+  `frontend/packages/create-app/template` 各自的 `src/api/core/auth.ts`）：
+  `BackendLoginUser` 加 `homePath` 字段，`toUserInfo()` 从硬编码 `''` 改成
+  `user.homePath ?? ''`。`router/guard.ts`/`store/auth.ts` **零改动**——
+  `userInfo.homePath || preferences.app.defaultHomePath` 这条兜底逻辑本来就在等这个字段
+- **chrome-devtools 端到端验证时发现一个真实的、值得记住的交互坑**：角色的
+  "首页"和"分配菜单"是两个独立操作——只设置了 `home_path` 但没给该角色勾选对应菜单时，
+  登录会直接落到该路径的 404（因为 backend 模式下前端的动态路由表是按
+  `menuService.treeOf(userId)`——即该用户角色被授权的菜单——生成的，`home_path`
+  指向的页面哪怕在 `sys_menu` 里真实存在，没被授权照样进不去）。这不是本轮实现的
+  bug，是与既有 RBAC 路由生成机制的必然交互，但目前没有任何 UI 提示——授予
+  `分配菜单` 之后重新登录验证通过（真实落到 `/system/dict`，无控制台报错）。
+  **待办**：要不要在"首页"选择器或保存时提示"请确认已给该角色分配对应菜单"，
+  还没做，下次碰这块时补上
+
+回归验证：`mvn -f framework/pom.xml test -pl framework-security-starter,framework-system-starter -am`
+全绿（含新增 5 例）；`sample-app` 的 `FrameworkRuntimeIT` 15 例全绿（含新增 2 例）；
+`pnpm --filter @describeadmin/system-ui build` 通过；chrome-devtools 走完
+"新建角色设首页 → 分配菜单 → 建用户 → 分配角色 → 登录验证落地路径"全链路。
 
 回归验证：`pnpm -F @describeadmin/system-ui run build`、
 `pnpm -F @describeadmin/admin run typecheck` / `build`、`pnpm run lint`、
