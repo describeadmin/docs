@@ -6,7 +6,7 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-21（阶段 F 完成）**
+**最后更新：2026-08-21（阶段 F 完成 + 前端追平：dict/config/oper-log/online + 角色数据权限表单）**
 
 ***
 
@@ -228,19 +228,53 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 `pnpm run check:circular` 未新增循环依赖（既有的三条循环与本次改动无关，在
 `@core/ui-kit/form-ui` 和 `effects/plugins/vxe-table` 里，本轮未触碰）。
 
+### 前端追平：dict/config/oper-log/online + 角色数据权限表单（2026-08-21）
+
+上一轮"前端：system-ui + create-app 落地"记录的两条前端欠账（在线用户页面未写、
+角色数据权限表单未画），加上本轮探查时发现的一个更紧急的问题——字典/参数配置/
+操作日志三个菜单在 `seed-rbac.sql` 里是 `visible=1`，但 `@describeadmin/system-ui`
+的 `src/views/` 下完全没有对应目录、`systemPageMap` 也没注册这几个 key，**三个入口
+点开就是静默 404**，不是"部分实现"——本轮一并解决：
+
+- **新增四个页面**（均进 `@describeadmin/system-ui`，不进 `apps/admin`，理由同
+  dept/menu/role/user）：`views/dict/index.vue`（字典类型 + 字典数据左右两栏，
+  字典数据没有服务端按 `dictType` 过滤——`SysDictDataController` 未覆写
+  `buildListWrapper`——前端整批拉取 `size=500` 后客户端过滤，量级上可接受，
+  后续如果字典数据规模变大需要回头给后端加真正的服务端过滤）、
+  `views/config/index.vue`（标准单表 CRUD）、`views/oper-log/index.vue`
+  （只读列表 + 模块/操作人/状态/时间范围筛选栏——这是四个新页面里唯一带筛选栏的，
+  因为后端 `SysOperLogController.list` 本就支持这些查询参数——+ 单条删除 + 清空）、
+  `views/online/index.vue`（只读列表，无分页，强制下线）
+- **角色页补数据权限**：`views/role/index.vue` 表单加 `dataScope` 下拉
+  （`DATA_SCOPE_OPTIONS`，新增在 `api/types.ts`），表格操作列加"分配数据权限"
+  按钮——仅当 `dataScope === CUSTOM(2)` 时可点击，非 CUSTOM 时 disabled 并提示，
+  对照后端 `SysRoleService.assignDataScopeDepts` 的 javadoc（非 CUSTOM 角色调用不报错
+  但写入的部门列表不会被数据权限拦截器读取）在 UI 层提前拦截而不是让用户点了发现没生效。
+  分配对话框结构照抄"分配菜单"（`ElTree` + `show-checkbox`），半选父节点同样要
+  一并提交
+- **`api/types.ts`/`api/index.ts`** 新增五个实体接口（`SysDictType`/`SysDictData`/
+  `SysConfig`/`SysOperLog`/`ActiveSession`）与对应接口封装，`SysRole` 加 `dataScope`
+  字段；`api/index.ts` 新增 `getRoleDeptsApi`/`assignRoleDeptsApi`
+- **`seed-rbac.sql`**：在线用户菜单的 `visible` 从 0 改回 1（该行注释此前明确写了
+  "前端页面落地后把这里改成 1"），这是本轮唯一改动 `framework` 仓的地方——纯种子数据，
+  不是框架代码
+- 字典/字典数据表单用了本地的 `DictTypeForm`/`DictDataForm` 接口而不是直接
+  `reactive<SysDictType>`——`status` 字段在实体上可空，`ElSwitch` 的 v-model 不接受
+  null，与 `dept/index.vue` 的 `DeptForm` 是同一处理方式
+
+回归验证：`pnpm -F @describeadmin/system-ui run build`、
+`pnpm -F @describeadmin/admin run typecheck` / `build`、`pnpm run lint`、
+`pnpm run check:circular`（未新增循环依赖）均通过。**未做**：起真实后端点一遍五个
+页面的完整交互——后端 schema 已是 D~F 阶段的 `data_scope`/`ancestors`/`sys_dict_*`/
+`sys_config`/`sys_oper_log`，本地 `sample-app` 数据库若还没按这套 schema 重建，
+启动会在登录时报错（上一轮已踩过一次同类问题），下次有本地环境时应补这一步再收工。
+
 ***
 
 ## 已知欠账
 
 **前端**（每进核心一个模块就多一页）
 
-- **在线用户菜单当前** **`visible = 0`**：后端已可用，`system/online/index` 页面还没写。
-  这个页面按今天的结论也该进 `@describeadmin/system-ui`（和 dept/menu/role/user 同类），
-  不要加回 `apps/admin`。前端落地后要把种子数据改回 1
-- **角色管理页还没有"数据范围"与"分配数据权限（自定义部门）"的表单**：后端
-  `PUT /api/system/role`（`data_scope` 字段）与 `.../{roleId}/depts` 端点已可用，
-  权限点 `system:role:assign-dept` 已登记，前端只是还没画出对应的表单控件
-  （改动位置是 `system-ui` 包里的 `views/role/index.vue`，不是 `apps/admin`）
 - **`@describeadmin/create-app`** **的** **`template/`** **与** **`apps/admin`** **靠手工同步**，没有
   自动化机制——`apps/admin` 的 router/layouts/adapter 等外壳代码变了，容易忘记同步
   `template/`，包内 README 写了这条维护责任但没有 CI 校验兜底
