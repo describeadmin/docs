@@ -153,6 +153,23 @@ public FrameworkXxxAutoConfiguration() {
 插件实现与核心默认实现必须遵守同一份 SPI 语义。建议测试用例与核心实现的用例**一一对应**——
 两种实现的行为差异如果存在，应当出现在测试里，而不是出现在生产环境。
 
+### 10. 认证类插件取得 userId 的两种方式
+
+- **凭证已是核心字段**（如手机号、邮箱）：直接注入 `SysUserService`，调
+  `findByMobile`/`findByEmail` 拿到 `SysUser`，取 `getId()`。
+- **凭证是外部系统的标识**（如第三方 OAuth 的 openId）：插件自建映射表
+  （如 `sys_user_oauth_binding(user_id, provider, open_id)`），自己维护换算关系，
+  **不碰核心 `sys_user`**。
+
+两种方式殊途同归：拿到 `userId` 后，都调用核心的
+`AuthUserLoader.loadByUserId(Long userId)`（`framework-security-starter` 提供的
+default 方法，`framework-system-starter` 的 `DbAuthUserLoader` 已实现）拿到角色/
+权限/数据权限/首页路径俱全的 `AuthUser`，不要重新查 `sys_role`/`sys_user_role`
+之类的表自己拼一遍。
+
+这也是"SPI 新增方法一律写成 `default`、默认给出安全的空实现"这条约定第二次落地
+（第一次是 `TokenStore.listActive()`）。以后任何 SPI 新增方法都按这个手法处理。
+
 ---
 
 ## 仓库归属：独立成仓（已完成）

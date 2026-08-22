@@ -334,6 +334,13 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
   `pnpm-workspace.yaml`、`repos.yml` 与全部引用，本轮为了不放大改动范围没做，
   先解决了"能不能被外部消费"这一个具体问题
 
+**登录模块**
+
+- 完整清单见 **`docs/LOGIN_MODULE_AUDIT.md`**（2026-08-22 梳理）。最值得优先处理的两条：
+  前端登录页遗留大量 Vben 上游演示脚手架（手机验证码/二维码/注册/第三方登录入口全是空壳，
+  且已随 `create-app` 模板扩散到每个新建业务项目）；`TokenStore` 是固定过期不是滑动过期，
+  也没有 refresh 机制，长时间操作的用户会被强制退出且无提前预警。
+
 **codegen**
 
 - `codegen` 仓的 Controller 模板大概率还生成 `protected String permPrefix()`——阶段 E
