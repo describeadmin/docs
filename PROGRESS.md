@@ -6,7 +6,8 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-21（阶段 F 完成 + 前端追平：dict/config/oper-log/online + 角色数据权限表单 + 角色级自定义首页 home_path）**
+**最后更新：2026-08-22（登录模块 A/B/C/D/E 项修复 + 邮箱验证码登录插件
+`framework-auth-email-starter` 新增并接入 sample-app/sample-frontend）**
 
 ***
 
@@ -22,6 +23,17 @@
 | `codegen`    | [#1](https://github.com/describeadmin/codegen/pull/1)    | ✅ 通过 | 不依赖 framework，可随时合     |
 | `frontend`   | [#1](https://github.com/describeadmin/frontend/pull/1)   | —    | 仅 `CLAUDE.md` 同步       |
 | `sample-app` | [#1](https://github.com/describeadmin/sample-app/pull/1) | ❌ 见下 | **合完 framework 后重跑即绿** |
+
+> **2026-08-22 追加**：登录模块 A/B/C/D/E 项修复 + 邮箱验证码登录插件（见下方新增章节）
+> 又在四个仓各开了一条分支，**都还没开 PR**，只是推了分支：
+> `framework`（`feat/0.2.0-permission-cache-plugin`，本轮三个提交直接续在这条分支上，
+> 与本表格里的 `framework` PR #1 是同一条分支）、`framework-cache-redis-starter`
+> （新分支 `feat/token-refresh-and-keys-with-prefix`）、`sample-app`（本轮提交续在
+> 已有的 `test/0.2.0-permission-online-lockout` 分支上）、`frontend`（新分支
+> `feat/email-login-and-refresh-token`，注意它是从 `chore/sync-claude-md` 切出的——
+> 那条分支本身还有 6 个提交没推到远端，见该仓 `git log main..chore/sync-claude-md`）。
+> 新插件 `framework-auth-email-starter` 代码已在本地写好，**远端仓库还没建**
+> （见 `docs/repos.yml`/`registry.md` 对应条目）。
 
 **`sample-app`** **与插件仓的 CI 现在都是红的，原因相同**——两者的 CI 都会去拿
 `describeadmin/framework` 的 `main`，而那里还是 0.1.1：
@@ -319,6 +331,113 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 `sys_config`/`sys_oper_log`，本地 `sample-app` 数据库若还没按这套 schema 重建，
 启动会在登录时报错（上一轮已踩过一次同类问题），下次有本地环境时应补这一步再收工。
 
+### 登录模块 A/B/C/D/E 项修复 + 邮箱验证码登录插件（2026-08-22）
+
+对照 `docs/LOGIN_MODULE_AUDIT.md`（2026-08-22 盘点）逐项修复，并交付插件把
+F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`）用起来。
+
+**`framework`**（`framework-security-starter`/`framework-system-starter`/
+`framework-cache-starter`，续在 `feat/0.2.0-permission-cache-plugin` 分支）：
+
+- **B 项**：`SysUserService.resetPassword()` 与 `SysUserController.update()`
+  （检测 `status` 显式改为 0）末尾都补了 `tokenStore.revokeAllOf(userId)`
+- **C 项**：新增 `SysUserService.changeOwnPassword()` + `PUT /api/auth/password`
+  （`AuthController`），当前登录用户自助改密，不挂具体权限点（只需已登录）
+- **D 项**（用户加码：不只查询，还要能手动解锁）：`CacheProvider` 新增
+  `default Set<String> keysWithPrefix(String prefix)`；`LoginAttemptGuard` 新增
+  `listLockedUsernames()`/`unlock()`；新增 `SysSecurityController`
+  （`GET/DELETE /api/system/security/locked-accounts[/{username}]`，权限点
+  `system:security:list`/`system:security:unlock`）——**必须用
+  `ObjectProvider<LoginAttemptGuard>`** 而非直接注入，因为
+  `FrameworkSystemAutoConfiguration` 声明了 `before = FrameworkSecurityAutoConfiguration`，
+  `LoginAttemptGuard` 这个 Bean 在 system 侧装配时还不存在——这是 registry.md 准入
+  规范第 3 条"引了却没生效"同款陷阱在核心内部两个 starter 之间的复现
+- **E 项**（完整方案：access/refresh 双令牌）：新增 `api` 类 `IssuedTokens`；
+  `TokenStore` 新增三个 `default` 方法 `issueWithRefresh`/`refresh`/
+  `revokeRefreshToken`（`issue(LoginUser)` 签名不变，现有/新增 `AuthProvider`
+  零改动）；`revokeAllOf` 的 javadoc 补充"必须同时吊销 refresh token"这条约束；
+  `InMemoryTokenStore` 实现（`refresh()` 做轮换）；`FrameworkSecurityProperties`
+  新增 `refresh-token.enabled`/`.ttl`；`AuthController` 新增
+  `POST /api/auth/refresh`（免认证，加入 permit-all）；`LoginResult` 新增
+  `refreshToken`/`refreshExpiresIn`（旧 3 参构造函数保留向后兼容）
+
+**`framework-cache-redis-starter`**（新分支 `feat/token-refresh-and-keys-with-prefix`）：
+`RedisCacheProvider.keysWithPrefix()` 用 `SCAN`（不用 `KEYS`，同
+`RedisTokenStore.listActive()` 已确立的铁律）；`RedisTokenStore` 新增对称的
+`refresh:`/`refresh-index:` 两组 key，`revokeAllOf` 同步吊销两组索引。
+
+**新插件 `framework-auth-email-starter`**（本地已建仓、已提交，**远端仓库待建**，
+见上方分支说明）：邮箱验证码（无密码）登录，实现 `AuthProvider`
+（`type()="email"`，`order()` 默认 0，排在内置 `password` 之后）+ 可选
+`NotifyChannel(channel="email")`。取 userId 走 registry.md 准入规范第 10 条
+第一种路径（`SysUserService.findByEmail` + `AuthUserLoader.loadByUserId`），
+不新建任何映射表。`EmailCodeAuthProvider`/`NotifyChannel` **都无条件注册**
+（不照抄 `CacheProvider` 那种 `@ConditionalOnMissingBean` 整体替换写法——两者都是
+多实现共存模型），只受自身 `@ConditionalOnProperty` 与
+`@ConditionalOnBean(JavaMailSender.class)` 控制，且该类**必须**声明
+`after = MailSenderAutoConfiguration.class`（唯一必须的顺序约束，因为
+`@ConditionalOnBean(JavaMailSender.class)` 是时序敏感判断）。发码接口
+`POST /api/auth/email/code` 不区分邮箱是否已注册（防账号枚举，验证码仍会生成写入
+`CacheProvider` 但不真正发信）。28 个测试全绿，含 GreenMail（纯 JVM 假 SMTP，
+无需 Docker）真实收发验证，覆盖 registry.md 准入规范第 8 条"不引=行为不变"/
+"引了=能力生效"两条路径。
+
+**`sample-app`**（续在 `test/0.2.0-permission-online-lockout` 分支）：显式版本号
+引入插件（`framework-bom` 不仲裁插件版本）+ `spring-boot-starter-mail`；
+`application-local.yml` 追加 SMTP（本地默认 MailHog）+ `permit-all` 追加
+`/api/auth/email/code`；新增 `AbstractGreenMailIntegrationTest`/`EmailLoginIT`
+（真实 GreenMail 走一遍注册邮箱→发码→登录成功全链路）；`FrameworkRuntimeIT`/
+`AuthFlowIT`/`LoginLockoutIT` 补齐 B/C/D/E 四项集成测试。**踩坑记录**：
+`GlobalExceptionHandler` 把全部 `BizException`（含 `ResultCode.UNAUTHORIZED`）统一
+映射成 HTTP 200 + 错误码，只有 Spring Security 过滤器链自身的拒绝才是真实 401/403——
+第一版 `refresh` 相关测试按"业务异常≈HTTP 401"的错误假设写，实际跑起来才发现，
+已改为断言响应体里的 `code` 字段。全部 90 个测试通过。
+
+**`frontend`**（新分支 `feat/email-login-and-refresh-token`）：
+- **A 项**：`apps/admin` 与 `packages/create-app/template` 的 `login.vue` 显式关闭
+  `showCodeLogin`/`showQrcodeLogin`/`showRegister`/`showThirdPartyLogin`/
+  `showForgetPassword`，删除对应四个死壳页面与路由，`page.json` 清理未用 key；
+  共享组件 `third-party-login.vue` 删除微信/QQ/GitHub/Google 四个无 `@click`
+  的纯装饰按钮（`DingdingLogin` 保留，前端 UI 组件不受 CLAUDE.md §4.6 约束，
+  且已靠环境变量门控恒为空渲染）；登录提交按钮补 `data-testid`
+- **邮箱登录 UI 地基**：`AuthenticationLogin` 新增 `showEmailLogin`（默认 `false`）/
+  `emailLoginPath`，locales 新增 `authentication.emailLogin`
+- **E 项前端接入**：`api/request.ts` 的 `doRefreshToken` 从"确定抛错的桩实现"换成
+  真实调用 `refreshTokenApi`；`preferences.ts` 的 `enableRefreshToken` 由 `false`
+  改 `true`；`store/auth.ts` 登录成功时存 `refreshToken`。
+  **`authenticateResponseInterceptor` 的排队重放逻辑本来就是现成的**，只是被桩实现
+  挡住了，这次不是新写而是接上
+- **发现分支基点问题**：最初从 `main` 切的功能分支，导致 `request.ts` 缺了
+  `@describeadmin/system-ui` 的 `provideSystemApiClient` 接入（`main` 落后于本地未推送的
+  `chore/sync-claude-md` 6 个提交）——改从 `chore/sync-claude-md` 重新切分支，
+  这正是 CLAUDE.md §7 反复强调的"本地已完成但未推上 GitHub 是常态"在实操中的复现
+
+**`sample-frontend`**（无 GitHub 远端，纯本地仓库，新分支 `feat/email-login`）：
+新增 `views/_core/authentication/email-login.vue`（复用共享
+`AuthenticationCodeLogin` 组件）+ `sendEmailCodeApi` + `/auth/email-login` 路由；
+`login.vue` 的 `showEmailLogin` 改为跟 `/api/auth/providers` 联动（修掉 A 项审计
+指出的"开关不跟 providers 联动"缺口），`handleSubmit` 的 `type` 由脆弱的
+`providers.value[0]` 改为硬编码 `'password'`；同步了 A/E 项在 apps/admin 侧的
+其余改动。顺带修了 `scripts/pack-local-deps.sh`——它重新生成 `pnpm-workspace.yaml`
+时会连带丢掉之前对 `allowBuilds`（`@parcel/watcher`/`vue-demi`）的手工修复，
+现在脚本自己会把这两行也写出来。
+
+**已知遗留**（下次开工前看一眼）：
+
+- `framework-auth-email-starter` 只完成到本地仓库，**远端 GitHub 仓库还没建**——
+  创建组织下新公开仓库是对外、不易撤销的操作，特意留给人工确认
+- `sample-frontend` 的 `vue-tsc --noEmit` 会在 `@describeadmin/ui` 打出的
+  `dist/components/api-component/api-component.vue.d.ts` 里报一个**与本轮改动无关的
+  预置 bug**：`AnyPromiseFunction` 类型跨包解析失败，`rolldown-plugin-dts` 把它
+  错误替换成字面量 `undefined`，产出 `beforeFetch: undefined<any, any>;` 这种不合法
+  语法，导致 `.d.ts` 文件本身无法解析（`--skipLibCheck` 对语法错误不生效）。
+  `apps/admin` 用 workspace 源码链接（不经过打包的 `dist`）跑 `vue-tsc` 完全正常，
+  `sample-frontend` 的 `vite build`（生产构建）也完全正常，只有"消费打包后的
+  `.d.ts` 再跑 `vue-tsc`"这条路径会撞上——本轮没有修，因为这是
+  `@core/base/typings` 与 `common-ui` 之间类型重导出在 tsdown 构建链路上的一个更深的
+  预置问题，超出本轮范围
+- 四个仓库的新分支都还没开 PR，也没有合并进各自 main/master
+
 ***
 
 ## 已知欠账
@@ -336,10 +455,12 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 **登录模块**
 
-- 完整清单见 **`docs/LOGIN_MODULE_AUDIT.md`**（2026-08-22 梳理）。最值得优先处理的两条：
-  前端登录页遗留大量 Vben 上游演示脚手架（手机验证码/二维码/注册/第三方登录入口全是空壳，
-  且已随 `create-app` 模板扩散到每个新建业务项目）；`TokenStore` 是固定过期不是滑动过期，
-  也没有 refresh 机制，长时间操作的用户会被强制退出且无提前预警。
+- 完整清单见 **`docs/LOGIN_MODULE_AUDIT.md`**（2026-08-22 梳理，同日已更新各项进展）。
+  A/B/C/D/E 五项已修复（见上方新增章节），F 项的地基（`mobile`/`email` 核心字段 +
+  `loadByUserId`）与"邮箱验证码登录"这一半能力也已交付（`framework-auth-email-starter`）。
+  **仍未立项**：手机验证码登录本身（`MobileCodeAuthProvider` 一类的实现，需要短信
+  通道，`docs/registry.md`"规划中"表里的"短信通道"尚未开工）；阶段 G 的厂商登录
+  （浙政钉/企业微信）。
 
 **codegen**
 
