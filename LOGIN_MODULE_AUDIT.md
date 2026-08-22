@@ -40,6 +40,20 @@
 > 一并解决了本节提到的"开关不跟 providers 联动"的设计缺口，但仅对 email 这一项做
 > （其余四项本来就没有对应能力）。**`create-app/template` 与 `apps/admin` 目前需要手工
 > 保持同步**，本轮已同步一次。
+>
+> **追加发现并修复（2026-08-22，chrome-devtools 走查时撞见）**：`packages/effects/layouts`
+> 的 `AuthenticationFormView`（`RouterView` 外层包 `Transition`+`KeepAlive` 那层布局壳）
+> 存在一个此前从未被撞见的既有缺陷——`<Transition mode="out-in"><KeepAlive :include="['Login']">`
+> 这个组合下，"离开的是被 KeepAlive 缓存的组件（Login）、进入的是首次挂载的新组件"这条路径
+> 会卡死：out-in 模式要等离场过渡结束才播放入场过渡，而被 KeepAlive 缓存的节点是
+> deactivate 不是真正 unmount，离场过渡永远等不到结束信号，最终整个 `RouterView` 渲染成
+> 一个空注释节点，**没有任何报错或警告**（用 codegraph_explore 定位无果后，靠手工在编译产物
+> 里插桩才找到根因）。症状是：直接访问 `/auth/email-login` 完全正常，但从登录页点击
+> "邮箱登录"按钮（前端路由内跳转）会跳出空白页。这个缺陷一直潜伏是因为 EmailLogin 路由加入
+> 之前，`/auth` 下从未真的存在第二个有内容的跳转目的地——此前的验证码登录等路由都是本节
+> 开头描述的死壳，从没人点开过。修复：去掉 `mode="out-in"`，退回同时过渡（低风险，只是视觉上
+> 从"先出后入"变成"同时淡入淡出"），已用真实点击链路验证。提交见 `frontend` 仓
+> `feat/email-login-and-refresh-token` 分支的 `c014a91`。
 
 ### B. 改密码 / 禁用账号后，未撤销已签发的令牌
 
