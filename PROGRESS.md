@@ -32,8 +32,9 @@
 > 已有的 `test/0.2.0-permission-online-lockout` 分支上）、`frontend`（新分支
 > `feat/email-login-and-refresh-token`，注意它是从 `chore/sync-claude-md` 切出的——
 > 那条分支本身还有 6 个提交没推到远端，见该仓 `git log main..chore/sync-claude-md`）。
-> 新插件 `framework-auth-email-starter` 代码已在本地写好，**远端仓库还没建**
-> （见 `docs/repos.yml`/`registry.md` 对应条目）。
+> 新插件 `framework-auth-email-starter` 代码已写好并测试通过，**远端仓库已于
+> 2026-08-22 建好并推送**（`master` 分支，人工确认后由 AI 建仓）——
+> 见 `docs/repos.yml`/`registry.md` 对应条目，状态已改回「待发布」。
 
 **`sample-app`** **与插件仓的 CI 现在都是红的，原因相同**——两者的 CI 都会去拿
 `describeadmin/framework` 的 `main`，而那里还是 0.1.1：
@@ -366,8 +367,9 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
 `RedisTokenStore.listActive()` 已确立的铁律）；`RedisTokenStore` 新增对称的
 `refresh:`/`refresh-index:` 两组 key，`revokeAllOf` 同步吊销两组索引。
 
-**新插件 `framework-auth-email-starter`**（本地已建仓、已提交，**远端仓库待建**，
-见上方分支说明）：邮箱验证码（无密码）登录，实现 `AuthProvider`
+**新插件 `framework-auth-email-starter`**（已建仓并推送到
+[GitHub](https://github.com/describeadmin/framework-auth-email-starter)，`master` 分支）：
+邮箱验证码（无密码）登录，实现 `AuthProvider`
 （`type()="email"`，`order()` 默认 0，排在内置 `password` 之后）+ 可选
 `NotifyChannel(channel="email")`。取 userId 走 registry.md 准入规范第 10 条
 第一种路径（`SysUserService.findByEmail` + `AuthUserLoader.loadByUserId`），
@@ -424,8 +426,19 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
 
 **已知遗留**（下次开工前看一眼）：
 
-- `framework-auth-email-starter` 只完成到本地仓库，**远端 GitHub 仓库还没建**——
-  创建组织下新公开仓库是对外、不易撤销的操作，特意留给人工确认
+- ~~`framework-auth-email-starter` 只完成到本地仓库，远端 GitHub 仓库还没建~~
+  **已解决（2026-08-22）**：人工确认后已建仓并推送，见上方与 `registry.md`/`repos.yml`
+- **追加发现并修复（2026-08-22，chrome-devtools 走查邮箱登录时撞见）**：
+  `packages/effects/layouts` 的 `AuthenticationFormView`（`RouterView` 外层包
+  `Transition`+`KeepAlive` 的布局壳）存在一个此前从未被撞见的既有缺陷——
+  `<Transition mode="out-in"><KeepAlive :include="['Login']">` 这个组合下，
+  "离开的是被 KeepAlive 缓存的组件（Login）、进入的是首次挂载的新组件"这条路径
+  会卡死渲染成一个空注释节点，且没有任何报错/警告。症状是：直接访问
+  `/auth/email-login` 完全正常，但从登录页点击"邮箱登录"按钮（前端路由内跳转）
+  会跳出空白页。这个缺陷一直潜伏是因为 EmailLogin 之前 `/auth` 下从没真的存在过
+  第二个有内容的跳转目的地。修复：去掉 `mode="out-in"`，退回同时过渡，已用真实
+  点击链路验证。提交见 `frontend` 仓 `feat/email-login-and-refresh-token` 分支的
+  `c014a91`，详见 `LOGIN_MODULE_AUDIT.md` A 项追加发现
 - `sample-frontend` 的 `vue-tsc --noEmit` 会在 `@describeadmin/ui` 打出的
   `dist/components/api-component/api-component.vue.d.ts` 里报一个**与本轮改动无关的
   预置 bug**：`AnyPromiseFunction` 类型跨包解析失败，`rolldown-plugin-dts` 把它

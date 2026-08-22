@@ -115,17 +115,18 @@ repos:
 
   - name: framework-auth-email-starter
     group: ext
-    status: planned
+    status: active
     lang: java
     spi: AuthProvider, NotifyChannel
     desc: 邮箱验证码（无密码）登录；可选提供 email 通知渠道
     framework_min: "0.2.0"
     note: |
-      代码与测试已在本地写好（28 个测试全绿，含 GreenMail 真实收发验证），
-      但 github.com/describeadmin/framework-auth-email-starter 这个远端仓库本身
-      还没建——新建组织下公开仓库属于对外、不易撤销的操作，本轮留给人工确认后再建。
-      待仓库建好、代码推上去后，status 改为 active，registry.md 对应行状态改为「待发布」。
-      已应用到 sample-app（本地 mvn install -Dgpg.skip=true 装进 .m2）+ sample-frontend。
+      代码与测试已在本地写好（28 个测试全绿，含 GreenMail 真实收发验证）。
+      2026-08-22 人工确认后已建仓并推送：github.com/describeadmin/framework-auth-email-starter
+      （master 分支）。registry.md 对应行状态改为「待发布」——等 framework 0.2.0
+      先发到 Central，本插件 import 的 framework-bom 才有一个真实存在的版本可引用。
+      已应用到 sample-app（本地 mvn install -Dgpg.skip=true 装进 .m2）+ sample-frontend，
+      chrome-devtools 走过完整的发码→MailHog 收码→登录成功链路。
 
   - name: framework-auth-zhengwuding-starter
     group: ext

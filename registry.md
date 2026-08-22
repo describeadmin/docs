@@ -17,14 +17,12 @@
 | 插件 | 仓库 | 实现的 SPI | 最低框架版本 | 状态 | 说明 |
 |---|---|---|---|---|---|
 | Redis 缓存与会话 | [`framework-cache-redis-starter`](https://github.com/describeadmin/framework-cache-redis-starter) | `CacheProvider`、`TokenStore` | **0.2.0** | 待发布 | 解除内存实现的两条局限：重启掉线、不支持多实例。用到 0.2.0 引入的 `TokenStore.listActive()` 与 `ActiveSession` |
-| 邮箱验证码登录 | [`framework-auth-email-starter`](https://github.com/describeadmin/framework-auth-email-starter) | `AuthProvider`（另附可选 `NotifyChannel`） | **0.2.0** | 待建远端仓库 | 无密码邮箱验证码登录，取 userId 走准入规范第 10 条第一种路径（`SysUserService.findByEmail` + `AuthUserLoader.loadByUserId`）。可选提供 `NotifyChannel(channel="email")` 复用同一个 `JavaMailSender` 供其他场景发信。用到 0.2.0 同批交付的 access/refresh 双令牌与 `CacheProvider.keysWithPrefix()` |
+| 邮箱验证码登录 | [`framework-auth-email-starter`](https://github.com/describeadmin/framework-auth-email-starter) | `AuthProvider`（另附可选 `NotifyChannel`） | **0.2.0** | 待发布 | 无密码邮箱验证码登录，取 userId 走准入规范第 10 条第一种路径（`SysUserService.findByEmail` + `AuthUserLoader.loadByUserId`）。可选提供 `NotifyChannel(channel="email")` 复用同一个 `JavaMailSender` 供其他场景发信。用到 0.2.0 同批交付的 access/refresh 双令牌与 `CacheProvider.keysWithPrefix()` |
 
 > 「待发布」= 代码与 CI 就绪，但尚未推 Maven Central。
 > 插件 `import` 的 `framework-bom` 必须是**已发布**的版本，因此它要等框架 0.2.0 先上 Central。
->
-> 「待建远端仓库」= 代码已在本地写好（含测试），但 `github.com/describeadmin/framework-auth-email-starter`
-> 这个仓库本身还没建——创建组织下新公开仓库属于对外、不易撤销的操作，本轮特意留给人工确认后再建，
-> 不是遗漏。建好仓库、推上代码后改回「待发布」。
+> `framework-auth-email-starter` 的远端仓库已于 2026-08-22 建好并推送（`master` 分支），
+> 同样在等框架 0.2.0 先上 Central。
 
 ## 规划中
 
