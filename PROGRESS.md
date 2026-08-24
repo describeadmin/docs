@@ -493,11 +493,11 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
   不覆盖已有密文/索引列）
 - `mvn clean verify -Prelease -Dgpg.skip=true` 验证通过，能产出 Central 要求的三件套
 
-**已知遗留**：本地 git 仓库已提交（`c:\Users\Jeffr\Workspace\Projects\describe-admin\framework-crypto-starter`），
-**远端 GitHub 仓库尚未创建**——`gh repo create` 被 Claude Code 的权限分类器拦下（创建公开
-仓库属于对外操作），按"独立完成任务的偏好"里"只有推公共仓 main 与发 Central 要先确认"
-这条边界，需要用户显式确认后才创建并推送。`docs/registry.md`/`repos.yml` 已登记，状态先标
-"本地已完成"/`planned`，建仓推送后需改回"待发布"/`active` 并补 `publishes`。
+**已解决（2026-08-24）**：`gh repo create` 最初被 Claude Code 的权限分类器拦下（创建公开
+仓库属于对外操作），用户显式确认后已建仓并推送：
+[github.com/describeadmin/framework-crypto-starter](https://github.com/describeadmin/framework-crypto-starter)
+（`master` 分支）。`docs/registry.md`/`repos.yml` 已同步改回"待发布"/`active`，与
+`framework-auth-email-starter` 一样等 framework 0.2.0 先发 Central 才能跟着发。
 
 ## 已知欠账
 

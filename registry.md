@@ -18,15 +18,14 @@
 |---|---|---|---|---|---|
 | Redis 缓存与会话 | [`framework-cache-redis-starter`](https://github.com/describeadmin/framework-cache-redis-starter) | `CacheProvider`、`TokenStore` | **0.2.0** | 待发布 | 解除内存实现的两条局限：重启掉线、不支持多实例。用到 0.2.0 引入的 `TokenStore.listActive()` 与 `ActiveSession` |
 | 邮箱验证码登录 | [`framework-auth-email-starter`](https://github.com/describeadmin/framework-auth-email-starter) | `AuthProvider`（另附可选 `NotifyChannel`） | **0.2.0** | 待发布 | 无密码邮箱验证码登录，取 userId 走准入规范第 10 条第一种路径（`SysUserService.findByEmail` + `AuthUserLoader.loadByUserId`）。可选提供 `NotifyChannel(channel="email")` 复用同一个 `JavaMailSender` 供其他场景发信。用到 0.2.0 同批交付的 access/refresh 双令牌与 `CacheProvider.keysWithPrefix()` |
-| 敏感字段加密入库 | `framework-crypto-starter`（本地已完成，尚未建仓，见下方说明） | `CryptoProvider` | **0.2.0** | 本地已完成 | 面向**业务方自己的实体**（不是核心 `sys_user`）的字段级透明加密：`CryptoProvider`（多实现共存模型，仿 `NotifyChannel`）+ `CryptoDispatcher` + `EncryptedStringTypeHandler`；内置 AES-256-GCM（零依赖默认可用）与 SM4-GCM+HmacSM3（国密，Bouncy Castle 为 optional 依赖）；密文自描述算法前缀支持换算法不迁移存量数据；`@BlindIndex` 支持等值查询字段的索引自动维护；`CryptoTemplate` 覆盖自定义 Mapper/`JdbcTemplate`/批量脚本等 TypeHandler 覆盖不到的场景。盲索引自动填充挂进 `framework-mybatis-starter` 0.2.0 开放的 `ObjectProvider<InnerInterceptor>` 扩展点，**零框架核心改动**（已用字节码反编译验证 `InnerInterceptor.beforeUpdate` 严格早于 `MetaObjectHandler` 填充与 `TypeHandler` 加密的时序）。57 个测试全绿，含 MySQL 5.7/8.4 双版本 Testcontainers 端到端集成测试——过程中发现并验证了一条真实陷阱：`@TableField(typeHandler=...)` 对 INSERT/UPDATE 天然生效，但 SELECT 必须配合实体上的 `@TableName(autoResultMap = true)` 才会生效，缺了不报错，只是查出来的是密文当明文用，已写进插件 README 与 `EncryptedStringTypeHandler` 的 javadoc |
+| 敏感字段加密入库 | [`framework-crypto-starter`](https://github.com/describeadmin/framework-crypto-starter) | `CryptoProvider` | **0.2.0** | 待发布 | 面向**业务方自己的实体**（不是核心 `sys_user`）的字段级透明加密：`CryptoProvider`（多实现共存模型，仿 `NotifyChannel`）+ `CryptoDispatcher` + `EncryptedStringTypeHandler`；内置 AES-256-GCM（零依赖默认可用）与 SM4-GCM+HmacSM3（国密，Bouncy Castle 为 optional 依赖）；密文自描述算法前缀支持换算法不迁移存量数据；`@BlindIndex` 支持等值查询字段的索引自动维护；`CryptoTemplate` 覆盖自定义 Mapper/`JdbcTemplate`/批量脚本等 TypeHandler 覆盖不到的场景。盲索引自动填充挂进 `framework-mybatis-starter` 0.2.0 开放的 `ObjectProvider<InnerInterceptor>` 扩展点，**零框架核心改动**（已用字节码反编译验证 `InnerInterceptor.beforeUpdate` 严格早于 `MetaObjectHandler` 填充与 `TypeHandler` 加密的时序）。57 个测试全绿，含 MySQL 5.7/8.4 双版本 Testcontainers 端到端集成测试——过程中发现并验证了一条真实陷阱：`@TableField(typeHandler=...)` 对 INSERT/UPDATE 天然生效，但 SELECT 必须配合实体上的 `@TableName(autoResultMap = true)` 才会生效，缺了不报错，只是查出来的是密文当明文用，已写进插件 README 与 `EncryptedStringTypeHandler` 的 javadoc |
 
 > 「待发布」= 代码与 CI 就绪，但尚未推 Maven Central。
 > 插件 `import` 的 `framework-bom` 必须是**已发布**的版本，因此它要等框架 0.2.0 先上 Central。
 > `framework-auth-email-starter` 的远端仓库已于 2026-08-22 建好并推送（`master` 分支），
 > 同样在等框架 0.2.0 先上 Central。
-> `framework-crypto-starter` 目前只有本地 git 仓库（已提交），**远端仓库尚未创建**——
-> 建仓/推送这一步涉及创建公开仓库，按既有纪律需要人工确认后才由 AI 执行，见本仓
-> `PROGRESS.md` 对应条目。
+> `framework-crypto-starter` 的远端仓库已于 2026-08-24 人工确认后建好并推送（`master` 分支），
+> 同样在等框架 0.2.0 先上 Central。
 
 ## 规划中
 

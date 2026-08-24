@@ -130,15 +130,17 @@ repos:
 
   - name: framework-crypto-starter
     group: ext
-    status: planned   # 本地已完成并提交，远端仓库尚未创建——建公开仓需人工确认，见下方 note
+    status: active
     lang: java
     spi: CryptoProvider
     desc: 面向业务方自己实体的字段级敏感数据加密入库（AES-256-GCM / SM4-GCM + 盲索引 + 手动加解密门面）
     framework_min: "0.2.0"   # 用到 0.2.0 开放给外部模块的 ObjectProvider<InnerInterceptor> 扩展点
     note: |
       代码与测试已在本地写好（57 个测试全绿，含 MySQL 5.7/8.4 双版本 Testcontainers
-      端到端集成测试），本地 git 仓库已提交，尚未推 GitHub——建公开仓这一步按既有纪律
-      需要人工确认后才由 AI 执行，先记在这里等待确认，确认后改回 active 并补 publishes。
+      端到端集成测试）。2026-08-24 人工确认后已建仓并推送：
+      github.com/describeadmin/framework-crypto-starter（master 分支）。registry.md
+      对应行状态改为「待发布」——等 framework 0.2.0 先发到 Central，本插件 import 的
+      framework-bom 才有一个真实存在的版本可引用。
       与 framework-auth-email-starter 的关键差异：不是给核心 sys_user 加能力，而是给
       *业务方自己的实体*提供开箱即用的字段加密，框架核心零改动即可挂上——盲索引自动填充
       复用 framework-mybatis-starter 0.2.0 已开放的 ObjectProvider<InnerInterceptor>
@@ -146,6 +148,10 @@ repos:
       不受影响。落地过程中发现一条真实 MyBatis-Plus 陷阱：@TableField(typeHandler=...)
       对 SELECT 生效必须配合实体上的 @TableName(autoResultMap = true)，缺了不报错只是
       查出来的是密文——已写进插件 README 与 EncryptedStringTypeHandler 的 javadoc。
+    publishes:
+      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Central 后才能发本插件 ——
+      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      - io.github.describeadmin:framework-crypto-starter
 
   - name: framework-auth-zhengwuding-starter
     group: ext
