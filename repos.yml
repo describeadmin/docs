@@ -128,6 +128,25 @@ repos:
       已应用到 sample-app（本地 mvn install -Dgpg.skip=true 装进 .m2）+ sample-frontend，
       chrome-devtools 走过完整的发码→MailHog 收码→登录成功链路。
 
+  - name: framework-crypto-starter
+    group: ext
+    status: planned   # 本地已完成并提交，远端仓库尚未创建——建公开仓需人工确认，见下方 note
+    lang: java
+    spi: CryptoProvider
+    desc: 面向业务方自己实体的字段级敏感数据加密入库（AES-256-GCM / SM4-GCM + 盲索引 + 手动加解密门面）
+    framework_min: "0.2.0"   # 用到 0.2.0 开放给外部模块的 ObjectProvider<InnerInterceptor> 扩展点
+    note: |
+      代码与测试已在本地写好（57 个测试全绿，含 MySQL 5.7/8.4 双版本 Testcontainers
+      端到端集成测试），本地 git 仓库已提交，尚未推 GitHub——建公开仓这一步按既有纪律
+      需要人工确认后才由 AI 执行，先记在这里等待确认，确认后改回 active 并补 publishes。
+      与 framework-auth-email-starter 的关键差异：不是给核心 sys_user 加能力，而是给
+      *业务方自己的实体*提供开箱即用的字段加密，框架核心零改动即可挂上——盲索引自动填充
+      复用 framework-mybatis-starter 0.2.0 已开放的 ObjectProvider<InnerInterceptor>
+      扩展点，不是新开的口子。SM4 依赖 Bouncy Castle 声明为 optional，只用 AES 的业务方
+      不受影响。落地过程中发现一条真实 MyBatis-Plus 陷阱：@TableField(typeHandler=...)
+      对 SELECT 生效必须配合实体上的 @TableName(autoResultMap = true)，缺了不报错只是
+      查出来的是密文——已写进插件 README 与 EncryptedStringTypeHandler 的 javadoc。
+
   - name: framework-auth-zhengwuding-starter
     group: ext
     status: planned

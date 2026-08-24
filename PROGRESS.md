@@ -6,8 +6,8 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-22（登录模块 A/B/C/D/E 项修复 + 邮箱验证码登录插件
-`framework-auth-email-starter` 新增并接入 sample-app/sample-frontend）**
+**最后更新：2026-08-24（新插件 `framework-crypto-starter` 敏感字段加密入库设计与实现完成，
+本地已提交，远端建仓待用户确认）**
 
 ***
 
@@ -452,6 +452,52 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
 - 四个仓库的新分支都还没开 PR，也没有合并进各自 main/master
 
 ***
+
+### 敏感字段加密插件 framework-crypto-starter（2026-08-24）
+
+用户提出"给业务方自己的实体做字段级敏感数据加密（身份证、手机号等）"需求，讨论定型为
+独立插件（不进 framework 仓、不碰 `sys_user.mobile`/`email`），设计与实现均已完成：
+
+- **`CryptoProvider` SPI**：多实现共存模型（仿 `NotifyChannel`/`NotifyDispatcher`，不是
+  `CacheProvider` 那种单一默认实现整体替换模型）+ `CryptoDispatcher`（按 `algorithm()` 路由，
+  构造期查重复标识直接失败；密文格式 `<算法>:<Base64(IV||密文+Tag)>` 自描述算法前缀，
+  使换算法不需要迁移存量数据，同列新旧算法密文可共存）
+- **内置两个算法**：`AesCryptoProvider`（AES-256-GCM，JDK 原生零依赖，默认可用）、
+  `Sm4CryptoProvider`（SM4-GCM + HmacSM3，国密，面向政务/信创场景；Bouncy Castle 声明为
+  `optional` 依赖，只用 AES 的业务方不受影响）。DES/3DES/ChaCha20 明确不做；SM2/格式保留
+  加密（FPE）记入 registry.md"规划中"，不预先设计接口形状
+- **`EncryptedStringTypeHandler`**（+ Aes/Sm4 两个子类）：MyBatis-Plus 字段级透明加解密，
+  静态持有者模式桥接 Spring（TypeHandler 由 MyBatis 反射创建，不受 DI 管理）
+- **`CryptoTemplate`**：手动加解密门面，覆盖自定义 Mapper 返回 Map/DTO、`JdbcTemplate`、
+  批量脚本等 TypeHandler 覆盖不到、且不会报错的场景
+- **`@BlindIndex` + `BlindIndexInnerInterceptor`**：盲索引自动填充，支持按明文精确查询加密
+  字段（不支持模糊/范围查询）。**零框架核心改动**是本轮设计上最花时间验证的一点——
+  MyBatis-Plus 全局只允许一个 `MetaObjectHandler`（核心 `AuditMetaObjectHandler` 已占用），
+  改用 `framework-mybatis-starter` 已开放、面向外部模块的
+  `ObjectProvider<InnerInterceptor>` 扩展点（`FrameworkMybatisAutoConfiguration` 的
+  javadoc 早已写明这条扩展方式，只是此前没有真实案例用过），已用 `javap` 反编译
+  MyBatis-Plus 3.5.17 字节码核实 `InnerInterceptor.beforeUpdate` 严格早于
+  `MetaObjectHandler` 填充与 `TypeHandler` 加密的时序，不是凭印象判断
+- **落地过程中发现并验证的一条真实陷阱**：`@TableField(typeHandler = ...)` 对
+  INSERT/UPDATE 天然生效（typeHandler 内联在生成 SQL 的参数占位符里），但 **SELECT 必须
+  配合实体上的 `@TableName(autoResultMap = true)`** 才会生效——缺了不报错，`selectById`
+  正常跑完，只是拿到的是密文当明文用。这条是在 MySQL Testcontainers 集成测试第一轮跑
+  失败后定位到的（单元测试测不出来，因为单元测试直接调 Provider，不经过 MyBatis-Plus 的
+  ResultMap 生成逻辑），已写进插件 README 与 `EncryptedStringTypeHandler`/`BlindIndex`
+  的 javadoc，示例代码全部带上这个属性
+- **测试**：57 个全绿，含 `ApplicationContextRunner` 装配测试（多算法共存、独立开关、
+  `default-algorithm` 误配启动即失败）+ 单元测试（GCM 篡改检测、盲索引确定性、
+  `CryptoDispatcher` 构造期查重、`BlindIndexInnerInterceptor` 反射层）+ MySQL 5.7/8.4
+  双版本 Testcontainers 端到端集成测试（绕开 ORM 直接查裸列确认存的是密文、AES/SM4
+  同列密文共存且互相能正确解密、篡改密文触发异常、盲索引精确查询、partial update
+  不覆盖已有密文/索引列）
+- `mvn clean verify -Prelease -Dgpg.skip=true` 验证通过，能产出 Central 要求的三件套
+
+**已知遗留**：本地 git 仓库已提交（`c:\Users\Jeffr\Workspace\Projects\describe-admin\framework-crypto-starter`），
+**远端 GitHub 仓库尚未创建**——`gh repo create` 被 Claude Code 的权限分类器拦下（创建公开
+仓库属于对外操作），按"独立完成任务的偏好"里"只有推公共仓 main 与发 Central 要先确认"
+这条边界，需要用户显式确认后才创建并推送。`docs/registry.md`/`repos.yml` 已登记，状态先标
+"本地已完成"/`planned`，建仓推送后需改回"待发布"/`active` 并补 `publishes`。
 
 ## 已知欠账
 
