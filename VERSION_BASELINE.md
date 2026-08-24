@@ -810,3 +810,68 @@ archetype 的文件过滤走 Velocity。给 `README.md` 开过滤后，
 `describeadmin-archetype:0.1.1` 在 Central 上的实际附件是
 `.jar` / `.pom` / 两个 `.asc` / `-sources.jar`，**没有 `-javadoc.jar`（404）**，
 Portal 照样校验通过并发布成功。
+
+---
+
+### 第九轮（0.2.0 收尾：JSON 序列化约定 + Clock + TreeBuilder 上提）
+
+实测环境：Spring Boot 3.5.16 / Jackson **2.21.4**（由 `spring-boot-dependencies` 的
+`jackson-bom.version` 决定，已核查该 POM 而非凭记忆）。
+
+按核查纪律实测确认的 Jackson 类路径（`unzip -l` + `javap`，非搜索结果）：
+
+| 类 | 路径 | 备注 |
+|---|---|---|
+| `NumberSerializer` | `com.fasterxml.jackson.databind.ser.std` | 有 `public static final instance` 字段 |
+| `ToStringSerializer` | `com.fasterxml.jackson.databind.ser.std` | **没有实现 `ContextualSerializer`** |
+| `LocalDateTimeSerializer` / `Deserializer` | `com.fasterxml.jackson.datatype.jsr310.{ser,deser}` | 随 `spring-boot-starter-web` 已在 classpath |
+
+#### 🔴 发现 ⑲：带 `datetime` 字段的模块，表单提交一直是坏的，且报的是 **500 不是 400**
+
+codegen 生成的日期时间选择器发 `value-format="YYYY-MM-DD HH:mm:ss"`（空格分隔），
+而 Spring Boot 默认按 ISO-8601（`T` 分隔）反序列化 `LocalDateTime`，解析必然失败。
+
+**为什么一直没被发现**：`codegen/examples/project.yaml` 只用了 `date` 没用 `datetime`，
+`sample-app` 也没有任何 `datetime` 字段——全仓没有一处触发过这条路径。
+而查询参数那条路 codegen 自己手工绕过了
+（`JavaGenerator.parserFor`：`LocalDateTime.parse(value.replace(' ', 'T'))`），
+于是"搜索能用、新增/编辑不能用"，症状更不像一个格式约定问题。
+
+> **一个生成器需要为某个约定手工打补丁，本身就是这个约定缺少中心落点的信号。**
+
+**实测复现方式**（把新模块关掉再发同样的请求）：
+
+```
+describeadmin.web.json.enabled=false
+POST /echo  {"dateTime":"2026-08-24 15:30:00"}   →  500
+```
+
+#### 🔴 发现 ⑳：`GlobalExceptionHandler` 把所有请求体解析失败都报成 500
+
+上一条实测时**推翻了动手前的判断**（原以为是 400）。原因是
+`GlobalExceptionHandler` 只处理 `BizException` / `MethodArgumentNotValidException` /
+`ConstraintViolationException` / `NoHandlerFoundException` / `Throwable` 兜底，
+**没有 `HttpMessageNotReadableException`**。于是任何请求体解析失败
+（日期格式错、JSON 语法错、类型对不上）都落到 `Throwable` 分支返回 500。
+
+"日期填错了"是使用者的输入问题，报服务器内部错误会把排查方向带偏——
+这正是 `JavaGenerator.parserFor` 的注释里已经写明的原则，
+只是全局异常处理器这一侧没有实现它。
+
+**本条与发现 ⑲ 相互独立**：⑲ 已随 `FrameworkJsonModule` 修复，
+⑳ 是它暴露出来的一个既有缺陷，**尚未处置**。
+
+#### 🔍 发现 ㉑：`strictInsertFill` 依赖 `TableInfo`，脱离 MyBatis-Plus 装配无法单测
+
+`MetaObjectHandler.strictInsertFill(MetaObject, String, Class, Object)` 的字节码里
+第一步就是 `findTableInfo(metaObject)`（`javap -c` 实测），因此拿一个普通 POJO 的
+`MetaObject` 调它不会填充任何字段，**也不报错**——又是一个"看起来跑过了"的形态。
+
+单测里正确的做法是先建出真实 `TableInfo`：
+
+```java
+MybatisConfiguration configuration = new MybatisConfiguration();
+MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "");
+TableInfoHelper.initTableInfo(assistant, YourEntity.class);
+```
+

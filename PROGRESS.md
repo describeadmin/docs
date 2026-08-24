@@ -6,8 +6,8 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-24（新插件 `framework-crypto-starter` 敏感字段加密入库设计与实现完成，
-本地已提交，远端建仓待用户确认）**
+**最后更新：2026-08-24（阶段 G 完成：JSON 序列化约定 + 可注入 `Clock` + `TreeBuilder` 上提，
+跨 framework / codegen / frontend / sample-frontend 四仓，本地已改完待提交）**
 
 ***
 
@@ -64,7 +64,8 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
    （`feat/0.2.0-permission-cache-plugin`）上跟着做完并验证过，不必单独等这一步——
    合并后 D\~F 的改动自然一起进 main。**分支目前已积了 A\~F 六个阶段，别再让差距继续拉大，
    合并 framework#1 后尽快切一次。**
-2. **阶段 G：厂商插件（浙政钉登录、钉钉推送）**。是当前分支尚未做的第一个阶段，
+2. **阶段 H：厂商插件（浙政钉登录、钉钉推送）**。是当前分支尚未做的第一个阶段（原编号 G，
+   因 JSON 序列化那批插队而顺延），
    需要新开插件仓（浙政钉登录用 `AuthProvider`、钉钉推送用阶段 F 刚交付的
    `NotifyChannel`），按 `docs/registry.md` 的六步流程走，独立成仓、不进 framework reactor。
 3. **framework 0.2.0 发 Maven Central** → 之后插件才能跟着发。
@@ -84,7 +85,8 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 | **D** | 数据权限 + `sys_dept.ancestors`                                             | ✅ 完成（未合并） |
 | **E** | 字典 + 参数配置 + 操作日志                                                        | ✅ 完成（未合并） |
 | **F** | `framework-storage-starter` + `framework-notify-starter`（SPI + 零依赖默认实现） | ✅ 完成（未合并） |
-| **G** | 厂商插件（浙政钉登录、钉钉推送）                                                        | ⬜         |
+| **G** | JSON 序列化约定 + 可注入 `Clock` + `TreeBuilder` 上提                              | ✅ 完成（未合并） |
+| **H** | 厂商插件（浙政钉登录、钉钉推送）                                                        | ⬜         |
 
 ### A\~C 实际产出
 
@@ -177,6 +179,64 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
   不同 key、`NotifyDispatcherTest` 并发 send 调用不丢失）；`LogNotifyChannelTest` 用
   Logback `ListAppender` 断言日志的**具体内容**而非"有没有打印一行日志"，直接对应
   CLAUDE.md 3.6 的测试规范
+
+### G 实际产出
+
+同一条分支上继续做，未单独开分支。**这批是跨仓的**——framework 改了序列化行为，
+codegen 与三份前端 `auth.ts` 必须同批跟上，否则生成的前端类型与实际返回值对不上。
+
+**framework**
+
+- `framework-web-starter`：`FrameworkJsonModule`（`Long`/`long` → 字符串、
+  时间格式出严进宽）+ `LongToStringSerializer`（实现 `ContextualSerializer`
+  以尊重 `@JsonFormat(shape = NUMBER)`）+ `describeadmin.web.json.*` 配置项。
+  **本模块此前一个测试都没有**，本批建立测试底座：24 个用例
+- `framework-common`：`PageResult` 的四个分页元信息 getter 加
+  `@JsonFormat(shape = NUMBER)`；`TreeBuilder` 从 framework-system-starter 上提到 `api/` 包
+- `framework-mybatis-starter`：`Clock` Bean（`@ConditionalOnMissingBean`）+
+  `AuditMetaObjectHandler` 改从 `Clock` 取时间（保留原两个构造函数为重载）
+- `framework-system-starter`：原 `core/TreeBuilder` 改为
+  `@Deprecated(forRemoval = true, since = "0.2.0")` 转发类，0.3.0 移除
+
+**codegen**：`tsType(LONG)` → `string`、`controlOf(LONG)` → `ElInput`、
+`initialValue(LONG)` → `''`，审计接口的 `id`/`createBy`/`updateBy` 与
+`update*Api`/`delete*Api` 的形参、`editingId`/`deletingId` 全部改为 `string`。
+`FrontendGeneratorTest` 补 5 个用例把这些契约钉住——**改之前这些类型没有任何断言覆盖**，
+所以改完测试仍然全绿，这本身就是个信号。
+
+**frontend / sample-frontend**：三份 `auth.ts`（`apps/admin`、
+`packages/create-app/template`、`sample-frontend`）的 `userId` 与 `BackendMenu.id`
+改为 `string`。
+
+#### 这批必须知道的三件事
+
+1. **不要自己声明 `@Bean ObjectMapper`**。会顶掉 Boot 全部默认配置并让业务方的
+   `spring.jackson.*` 失效。改约定一律加 `Module` Bean。
+2. **`long`（原始类型）与 `Long`（包装类型）在 Jackson 里是分别查找序列化器的。**
+   本批两者都注册了。曾考虑"只注册包装类型"作为分页元信息的天然分界线，
+   但那依赖"id 恰好写成 `Long`、分页字段恰好写成 `long`"的巧合，
+   业务方随手写 `private long id` 就会漏且毫无提示——改用 `@JsonFormat(shape = NUMBER)`
+   显式排除。
+3. **`strictInsertFill` 依赖 `TableInfo`**（字节码实测，见 VERSION_BASELINE 发现 ㉑）。
+   拿普通 POJO 的 `MetaObject` 调它什么都不会填充，**也不报错**。
+   测审计填充必须先 `TableInfoHelper.initTableInfo(...)`。
+
+### 验证基线（阶段 G，全绿，2026-08-24）
+
+| 线 | 结果 |
+| --- | --- |
+| framework 单测 | **151/151**（本批新增 32：web-starter 24、mybatis 4、common 4） |
+| codegen 单测 | **45/45**（本批新增 5，钉住 `long` → `string` 的生成契约） |
+| framework `clean verify -Prelease -Dgpg.skip=true` | 通过（含 `enforce-core-thin`；本批零新增依赖） |
+| `frontend/apps/admin` 类型检查 | 通过 |
+| `sample-frontend` 类型检查 | 1 个**既有**错误（`router/guard.ts:107`），stash 后同样复现，与本批无关 |
+| codegen 生成物目视核对 | `examples/project.yaml` 生成的 `.ts`/`.vue` 已逐项确认（`ownerDeptId` 为 string + ElInput、分页元信息仍为 number、`ElInputNumber` 仍被 `budget` 用到所以 import 未失效） |
+
+> **下面这张表是阶段 F 时的快照，`98/98` 的数字已过期**（F 之后的登录模块修复与
+> 邮箱登录插件又加过用例），保留是为了对照当时的 IT 覆盖情况。
+> 本批**没有**重跑 MySQL 5.7/8.4 的 sample-app 集成测试——那需要 Docker 环境，
+> 且本批改动是序列化层，未触及 SQL。合并前应补跑一次，重点看带 `datetime`
+> 字段的模块（当前 sample-app 里没有这样的字段，需要先加一个）。
 
 ### 验证基线（0.2.0 + D + E + F，全绿）
 
