@@ -14,6 +14,36 @@
 
 ***
 
+## 2026-08-26 追加：个人中心移动端适配 + 在线用户时间格式/时区修复
+
+两个前端可用性问题，均已在 `0.2.0-dev` 上修完，`framework`/`frontend` 已推送，
+`sample-frontend`（无远端）已本地提交：
+
+1. **个人中心页面不兼容移动端，修改密码表单在不同 PC 尺寸下也挤压**。
+   根因是 `packages/effects/common-ui/src/ui/profile/profile.vue` 的侧边栏+内容区
+   用固定 `w-1/6`/`w-5/6` 两栏布局，窄屏下直接被压垮；`password-setting.vue` 的
+   `VbenForm` 又是 `layout: 'horizontal'` + 固定 `labelWidth: 130`，与页面级
+   `password-setting.vue` 外层写死的 `w-1/3`（相对内容区的比例，容器变窄时
+   输入框同比例挤窄）叠加，PC 窗口稍窄就不好用。
+   修复：`profile.vue` 在 `lg` 断点以下纵向堆叠（配合 `useBreakpoints` 同步切换
+   `Tabs` 的 `orientation`）；`base-setting.vue`/`password-setting.vue`（common-ui）
+   用同一个 `md` 断点把 `VbenForm.layout` 动态切到 `vertical`；三份页面级
+   `password-setting.vue`（`apps/admin`、`packages/create-app/template`、
+   `sample-frontend`）外层宽度从 `w-1/3` 改成 `w-full max-w-lg`。
+   frontend commit `b3689e2`，sample-frontend commit `2e1edb7`。
+2. **在线用户列表的登录/过期时间格式、时区都不对**。根因是
+   `ActiveSession.issuedAt`/`expiresAt` 是 `Instant`，`FrameworkJsonModule`
+   （4.8 节）此前只处理了 `LocalDateTime`/`LocalDate`/`LocalTime`，`Instant` 走
+   Jackson 默认序列化——UTC 的 ISO-8601（带 `T`/`Z`），既跟框架统一的
+   `yyyy-MM-dd HH:mm:ss` 格式不一致，也没按服务器时区换算。
+   修复：新增 `LocalizedInstantSerializer`，复用同一个 `dateTimeFormat`，
+   按 `ZoneId.systemDefault()` 换算后输出同款字符串；只做序列化，不做反序列化
+   （目前没有 `@RequestBody` 需要把 `Instant` 当输入接收）。前端 `online/index.vue`
+   不需要改——后端格式一致后，跟其余 `createTime` 之类的列一样直接展示原始字符串
+   即可。framework commit `158840a`，已补测试 `FrameworkJsonModuleTest`。
+
+***
+
 ## ⚠️ 分支模型（2026-08-26 起生效，覆盖下面「五个 PR 待合并」一节）
 
 - **主分支统一是 `main`**。此前 `framework-auth-email-starter`/`framework-crypto-starter`
