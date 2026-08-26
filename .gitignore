@@ -45,3 +45,6 @@ tmp/
 # ---- dev.sh 的每 worktree 运行状态（pid 文件、后台进程日志）----
 scripts/.worktree/
 .worktree/
+
+# ---- 可视化测试的证据与报告输出（截图/日志/report.md，不是要归档的产物）----
+testing/results/
