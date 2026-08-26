@@ -559,6 +559,39 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
 （`master` 分支）。`docs/registry.md`/`repos.yml` 已同步改回"待发布"/`active`，与
 `framework-auth-email-starter` 一样等 framework 0.2.0 先发 Central 才能跟着发。
 
+***
+
+### 纠偏：worktree/可视化测试工具改到新仓库 `workspace`（2026-08-26）
+
+上两条被 revert 的记录（`scripts/dev.sh`、`testing/VISUAL_TESTING.md`）是本轮对
+"面向 AI 编程 / 全自动可视化测试 / worktree 友好"三个设计初衷的第一次落地尝试，
+**放错了受众**：`docs/` 是框架团队自己的元仓库（`repos.yml`/`clone-all.sh` 拉的是
+`framework`/`codegen`/`sample-app`/`sample-frontend`/`docs` 这一族框架自己的仓库），
+业务方从不 clone 它。业务方的真实工作空间只有 `mvn archetype:generate` 生成的
+`<业务>-server`、`npm create @describeadmin/app` 生成的 `<业务>-web`，放进 `docs/`
+的东西业务方永远看不到。
+
+用户拍板方向：新建独立的 **`workspace`** 仓库（`describeadmin/workspace`），承载：
+
+- `init-workspace.sh`：唯一入口脚本，首选分发方式
+  `curl -fsSL .../init-workspace.sh | bash -s -- <name>`，一条命令生成
+  `<name>-server`（archetype）+ `<name>-web`（create-app）+ `.claude/skills/`
+  + 业务方视角的 `CLAUDE.md`（新写的，不是框架团队那份的摘抄——不涉及插件作者规范、
+  发布治理这些业务方用不上的内容）
+- `.claude/skills/dev-env/`：本轮 `docs/scripts/dev.sh` 的通用化版本——目录名/项目名
+  从 `init-workspace.sh` 写的 `.claude/workspace.env` 读，不再硬编码
+  `sample-app`/`sample-frontend`；共享 MySQL/Redis 容器名按项目派生，避免同一台机器上
+  跑多个业务方项目时撞名。slug/端口偏移算法本轮已验证正确，原样带过去
+- `.claude/skills/visual-test/`：本轮 `VISUAL_TESTING.md` 的通用化版本，含
+  `click`/`fill` 走 `take_snapshot` 的 `uid`（不接受 CSS 选择器）这条真实跑通时才
+  发现的关键修正。`dept-create.yaml` 场景保留——`@describeadmin/system-ui` 的部门页面
+  随每个业务方项目分发，不是 sample-app 专属，这个示例场景对任何业务方项目都成立
+
+`docs` 仓的两条 revert 是干净的（Windows 文件锁导致 `.gitignore` 那部分手工补了一刀，
+效果一致，见 revert 提交信息）。完整设计方案见批准的 plan（本会话），下一步是把
+`workspace` 仓库的内容写出来，本地建好后再走"人工确认 → `gh repo create` → 推送"
+这条已有先例（`framework-auth-email-starter`/`framework-crypto-starter` 建仓都是这个流程）。
+
 ## 已知欠账
 
 **前端**（每进核心一个模块就多一页）
