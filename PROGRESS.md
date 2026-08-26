@@ -591,42 +591,10 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
     否则会在登录时报 `Access denied` 而不是更直观的"库不存在"
   - `docs/.gitignore` 新增 `.worktree/`（脚本的 pid 文件与后台进程日志落在这里）
 
-***
-
-### 可视化测试：VISUAL_TESTING.md + 首个场景跑通（2026-08-26）
-
-上一条记录里"硬部分写脚本"的方案被用户当场否掉——反问"全自动可视化测试需要写代码吗"，
-想清楚后发现确实不需要：DB 断言就是 `Bash` 起一条 `mysql -e`，报告就是 `Write` 一份
-Markdown，都是已有工具能直接做的事，专门写一个 Node 脚本（当时已经装完
-`js-yaml`/`mysql2` 准备写）属于 CLAUDE.md 4.7 点名的那类"少写几行调用的工具"，
-已撤回（`npm install` 产物、`package.json` 都删了）。
-
-**改为纯文档路线**：
-
-- **新增** **`docs/testing/VISUAL_TESTING.md`**：结构化 Spec 格式定义（在 5.4 基础上补了
-  `cleanup` 字段——有副作用的场景必须能重复跑）+ 逐步执行说明，读者是 AI Agent 自己
-- **新增** **`docs/testing/scenarios/dept-create.yaml`**：首个场景，选择器已对照
-  `frontend/packages/effects/system-ui/src/views/dept/index.vue` 真实源码核实
-- **新增** **`.claude/skills/visual-test/SKILL.md`**（**工作区根目录**，不在任何仓库里，
-  不受版本控制）：只是个指路的触发器，指向上面两个文件。这么放是因为 Claude Code 的
-  Skill 按当前工作目录扫描，而实际跑测试要在工作区根目录（同时看得到 sample-app 和
-  sample-frontend），但工作区根目录本身不是 git 仓库（`repos.yml` 的既有设计）——真正
-  的内容因此必须落在受版本控制的 `docs` 仓库里，workspace 根的这个文件换机器要手动重建
-- **`docs/.gitignore`** 新增 `testing/results/`（证据与报告输出，不是要归档的产物）
-
-**当场跑通一次**（撞见本地已经手工起着的联调环境：`sample-app` @ 8090、
-`sample-frontend` @ 5173、`da-mysql` @ 3307，都不是这次 `dev.sh dev up` 拉起的）：
-steps（navigate/click/fill）→ 两条 assertions（ui contains_text + db equals）→ cleanup
-全绿，报告见 `testing/results/1366b1e4/dept-create-20260826-093540/report.md`。跑的过程中
-发现文档最初写错的一处关键机制，已回头改正：`mcp__chrome-devtools__click`/`fill`
-**不接受 CSS 选择器，只接受 `take_snapshot` 返回的 `uid`**——Spec 里的
-`[data-testid="..."]` 是给人看的机器可读锚点，执行时要先拿快照、按可访问文本/角色
-对照源码找到对应节点，再用它的 `uid` 操作。这条修正直接体现了"先写文档设计、
-不真跑一次就不知道细节对不对"——与本文件一贯的记录习惯一致。
-
-**未覆盖**：`preconditions.login_as` 的登录表单路径（当时浏览器已带登录态，跳过了）；
-`evidence` 的 `on_error` 采集分支（这次全绿，没真实触发过）；`dev.sh dev up` 本身
-拉起环境这条路径仍未验证（见上一条记录的已知限制）。
+**下一步（可视化测试，阶段 3）**：按同一次讨论的结论，下一步是给 5.4 的结构化 YAML Spec
+接一个执行器——建议"硬"部分（DB 断言、证据归档）写脚本，"软"部分（导航/点击/截图）
+交给 AI Agent 直接调用 chrome-devtools MCP 执行，不要另写一个 Puppeteer 驱动去解释执行
+Spec（那样会丢失"AI 能在断言失败时自己读 console/DOM 诊断"这个价值）。尚未开工。
 
 ## 已知欠账
 
