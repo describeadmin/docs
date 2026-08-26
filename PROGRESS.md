@@ -6,8 +6,8 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-24（阶段 G 完成：JSON 序列化约定 + 可注入 `Clock` + `TreeBuilder` 上提，
-跨 framework / codegen / frontend / sample-frontend 四仓，本地已改完待提交）**
+**最后更新：2026-08-26（账号密码登录接入渐进式图形验证码，
+跨 framework / sample-app / frontend / sample-frontend 四仓，已提交并推送到各自分支）**
 
 ***
 
@@ -641,6 +641,89 @@ scenarios/dept-create.yaml}`。`docs/repos.yml` 新增 `enablement` 分组登记
    没有闭环验证的点，不要当成"已验证"
 2. `@describeadmin/create-app` 发布 npm 之后，应该补一次不加 stub 的完整端到端跑通
 
+***
+
+### 账号密码登录接入渐进式图形验证码（2026-08-26）
+
+用户提出"给账号密码登录加验证码"，讨论定型为：核心内置图形字符验证码（零依赖），
+预留 `CaptchaProvider` 契约供以后接入滑块/Cloudflare Turnstile/阿里云等第三方插件
+（本轮不做任何具体第三方插件）；触发策略用渐进式——正常登录不要求，同一用户名连续
+失败达到阈值（默认 3，严格小于 `lockout.max-failures` 默认 5）后才要求，复用
+`LoginAttemptGuard` 已有的失败计数。四仓均已提交并推送到各自现有分支
+（`framework`/`sample-app`/`frontend` 续在本文件顶部表格登记的那几条分支上，
+`sample-frontend` 本地仓库无远端）。
+
+**`framework`**（续在 `feat/0.2.0-permission-cache-plugin` 分支）：
+
+- 新增 `CaptchaProvider`/`CaptchaChallenge`（`framework-security-starter` 的 `api`
+  包）：`generate()`/`verify()` 两个动作，`verify` 一次性（无论对错立即失效，防重放）；
+  渲染数据放在 `payload: Map<String,Object>` 里而不是加签名字段，与 `AuthRequest`
+  解决"不同登录方式入参形状不同"是同一手法，保证以后接第三方插件不用改这两个类
+- 新增 `ImageCaptchaProvider`（`core` 包）：`BufferedImage`/`Graphics2D` 离屏渲染，
+  `CACHE_KEY_PREFIX` 刻意声明为 `public`——图形验证码是给人眼看的，自动化测试没法
+  "识图"，只能通过注入的 `CacheProvider` 直接读出正确答案，这是刻意的可测试性设计
+- 新增 `CaptchaGuard`（`core` 包）：渐进式触发编排，`LoginAttemptGuard` 新增只读
+  `failureCount()` 供其判断阈值，不新起一套计数；验证码答错/缺失**不计入**登录失败
+  计数（避免两套计数联动放大锁定）；`attemptGuard` 为 `null`
+  （`lockout.enabled=false`）时 fail-open，不因为一个开关被关就意外生效或失效
+- `ResultCode` 新增 `CAPTCHA_REQUIRED(40103)`/`CAPTCHA_INVALID(40104)`；
+  `FrameworkSecurityProperties` 新增 `captcha.*` 配置项，`trigger-threshold` 必须
+  严格小于 `lockout.max-failures`，装配时校验，配置错误直接拒绝启动而不是运行到一半
+  才发现验证码没生效；`AuthController` 新增 `GET /api/auth/captcha`（免认证），
+  `login()` 在 `registry.authenticate()` 之前挂 `CaptchaGuard`
+- 新增测试：`ImageCaptchaProviderTest`（含一次性防重放的核心断言）、
+  `CaptchaGuardTest`（阈值/放行/fail-open 各分支）、
+  `FrameworkSecurityCaptchaAutoConfigurationTest`（装配行为，含启动期拒绝非法阈值）；
+  `LoginAttemptGuardTest` 补 `failureCount` 用例。均通过（`framework` 单测新增
+  30 例，全绿）
+
+**`sample-app`**（续在 `test/0.2.0-permission-online-lockout` 分支）：
+
+- `AuthFlowIT` 新增验证码分区，走完整 HTTP 链路验证渐进式触发、一次性防重放、
+  两层校验独立
+- **发现并修复一个真实的跨功能交互**：`LoginLockoutIT` 原本裸发用户名密码，默认
+  `trigger-threshold(3)` 小于 `lockout.max-failures(5)`，第 3 次失败起会被
+  `CaptchaGuard` 拦在锁定判断之前（返回"需要验证码"而不是"用户名或密码错误"），
+  锁定计数因此卡在 3 不再前进——4/6 用例直接跑挂。这不是回归，是验证码这道新防线
+  与既有锁定测试的真实交互：`LoginLockoutIT` 要单独验证"锁定"这一层，改法是让它的
+  `login()` 每次都顺带解出一个真实验证码一并提交，绕开这层拦截；已在类注释里写明
+  这条交互，避免以后有人以为是巧合
+- **顺带发现两个与本轮无关的既有问题，未修复**（记在这里免得下次又当新 bug 排查）：
+  ① `AuthFlowIT.loginReturnsRefreshToken` 报 `ClassCast String→Number`——阶段 G 把
+  `LoginResult.expiresIn`/`refreshExpiresIn`（原始类型 `long`）也纳入了"`Long`/`long`
+  → 字符串"的序列化约定，但该测试断言仍按数字类型读，阶段 G 验证基线表里明确写过
+  "本批没有重跑 sample-app 集成测试"，这次是第一次真正跑到这条路径；
+  ② `PermissionEnforcementIT.noRoleUserIsDeniedOnPreAuthorizeEndpoint` 偶发失败，
+  比对的是含 `timestamp` 字段的完整 JSON 字符串，天然对时间敏感，是断言方式的问题
+  不是功能问题
+
+**`frontend`**（续在 `feat/email-login-and-refresh-token` 分支）与 **`sample-frontend`**
+（本地仓库，`feat/email-login` 分支）：
+
+- 不改 `@describeadmin/ui` 发布包——图形验证码只是"一张图 + 一个输入框"，在业务方
+  自己拥有的 `login.vue` 里加一个表单字段即可；验证码图片用 `VbenFormSchema.suffix`
+  （支持函数返回 VNode，由 `form-field.vue` 的 `VbenRenderContent` 渲染）贴在输入框
+  旁，不需要新增插槽
+- `auth.ts` 加 `captchaId?`/`captchaCode?`/`CaptchaChallenge`/`getCaptchaApi()`；
+  `login.vue` 正常登录不显示验证码字段，登录失败时按错误码判断是否需要显示
+- **真实浏览器验证时发现一个关键点**：最初按 `error.response.data.code` 读错误码
+  完全不生效，验证码字段永远不出现。根因是 `RequestClient.request()`
+  （`packages/effects/request/src/request-client/request-client.ts`）在 axios
+  拦截器链跑完之后又做了一层展开——`throw error.response ? error.response.data :
+  error`——到应用层 `catch` 到的 `error` 已经是后端 `Result` 原始 JSON 本身，不再
+  嵌套 `response.data`。这条只在真实点击链路里才会暴露，`vue-tsc` 类型检查测不出来
+  （`error: any`），单元测试也测不出来（没有真的走一遍 axios 拦截器链）。已改用
+  `error.code` 读取，并用 chrome-devtools 在 `apps/admin` 上完整点了一遍
+  "多次输错密码 → 出现验证码图片 → 输错验证码密码仍分别报错 → 验证码+密码都对，
+  登录成功、验证码字段消失"，网络面板确认每一步的响应码（40102/40103/40104/0）
+  与预期一致
+- locales 补 `authentication.captcha`/`captchaTip`/`captchaRefreshTip`
+  （`zh-CN`、`en-US`）
+
+**已知遗留**：三方验证码插件（Cloudflare Turnstile、阿里云/腾讯云等）本轮只留了
+契约扩展点，未实现；讨论过程中确认这类插件即使做，前端也要为每一家单独写适配组件
+（各家 JS SDK 初始化方式不同，没有统一协议），不是"后端装插件、前端零代码"，这条
+结论供以后接具体厂商时参考。
 
 ## 已知欠账
 
