@@ -588,9 +588,57 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
   随每个业务方项目分发，不是 sample-app 专属，这个示例场景对任何业务方项目都成立
 
 `docs` 仓的两条 revert 是干净的（Windows 文件锁导致 `.gitignore` 那部分手工补了一刀，
-效果一致，见 revert 提交信息）。完整设计方案见批准的 plan（本会话），下一步是把
-`workspace` 仓库的内容写出来，本地建好后再走"人工确认 → `gh repo create` → 推送"
-这条已有先例（`framework-auth-email-starter`/`framework-crypto-starter` 建仓都是这个流程）。
+效果一致，见 revert 提交信息）。完整设计方案见批准的 plan（本会话）。
+
+#### `workspace` 仓库已在本地写完并做过真实端到端验证（2026-08-26）
+
+本地 `c:\...\describe-admin\workspace\` 已建成 git 仓库（尚未推远端，见文末待办），内容：
+`README.md`（框架团队视角）、`CLAUDE.md`（业务方视角，新写）、`init-workspace.sh`、
+`.claude/skills/dev-env/{SKILL.md,dev.sh}`、`.claude/skills/visual-test/{SKILL.md,
+scenarios/dept-create.yaml}`。`docs/repos.yml` 新增 `enablement` 分组登记这个仓库
+（`status: planned`，建仓后改 `active`）；`develop_plan.md` 新增 9.5.1 节记录这个机制。
+
+**真实端到端跑通一次**（不是只读代码判断，见 CLAUDE.md 3.6 一贯的验证纪律）：
+
+1. `describeadmin-archetype` 确认已发布 Central（`0.1.1`），`init-workspace.sh` 用真实的
+   `mvn archetype:generate` 生成后端工程，`groupId`/`artifactId`/`package` 派生正确
+2. `@describeadmin/create-app` **确认尚未发布 npm**（`404`）——这是已知状态
+   （`repos.yml` 早就记着"尚未发布到 npm registry"），本轮验证时用一个 stub
+   （`mkdir` 代替 `npm create`）绕过这一步，只为了继续验证脚本后续逻辑，
+   不代表这一步本身跑通了；`workspace` 建仓推送后，真正的首次端到端验证要等
+   `create-app` 发布 npm 才能补全
+3. "拉取 `.claude`/`CLAUDE.md`"（本地 clone 场景）+ 写 `.claude/workspace.env` 两步
+   验证通过，生成物目录结构与 `README.md` 描述的 1:1 对应关系一致
+4. `dev-env` 的 `dev.sh slug`/`dev status` 在生成出的新工作空间里正确读到
+   `workspace.env`，且用两个不同 slug（模拟两个 worktree）验证了"共享的 MySQL/Redis
+   容器名与端口只随项目名变化、后端/前端端口与 DB schema 只随 worktree 变化"这条
+   设计在真实脚本里成立
+5. `dev.sh dev up` 真实拉起了一套新的共享容器（`describeadmin-dev-mysql-testapp`/
+   `describeadmin-dev-redis-testapp`，与框架团队自己用的 `da-mysql` 完全独立）+
+   真实的 `mvn spring-boot:run`，`curl /api/auth/login` 拿到了正确的 token 与
+   RBAC 权限列表，中文昵称"超级管理员"正常（再次确认没有 3.6 那类字符集坑）
+
+**验证过程中发现并当场修复的两个真实问题**（不是理论推演）：
+
+- **`dev down` 杀不干净 Windows 上的 java 子进程**：`taskkill //T` 杀的是记录下来的
+  那个 pid 自己的进程树，但 `mvn spring-boot:run` 派生出的真正 java 进程往往已经
+  脱离那棵树——`dev down` 报告"已停止"，java 却还占着端口。原脚本头部注释把这个写成
+  "极端情况下可能需要手动确认"，实测是**必现**。已改为按端口杀
+  （Windows 用 `Get-NetTCPConnection | Stop-Process`），验证过对真实残留进程有效
+- **并发 `dev up` 会撞 `docker run` 的 name 冲突**：`ensure_dev_mysql`/`ensure_dev_redis`
+  的"先查是否存在再创建"没有加锁，本轮测试时手滑对同一个 worktree 并发跑了两次
+  `dev up`，第二次在 Redis 容器创建那步撞上"name already in use"。已记录进头部注释的
+  已知限制（不加锁，避免过度设计——单次调用本身幂等，问题只在并发调用这个边缘场景）
+
+**待办（下次开工先看这里）**：
+1. `workspace` 仓库本地已完成，创建远端 GitHub 仓库前需要人工确认（`gh repo create`
+   属于对外操作，照 `framework-auth-email-starter`/`framework-crypto-starter` 的先例办）
+2. `visual-test` 的 `dept-create.yaml` 在这个新仓库的文件布局下**没有重新跑一遍**——
+   跑之前用的核心机制（`click`/`fill` 走 `uid`、DB 断言用 `mysql` CLI）本轮之前已经
+   验证过，本次只是文件挪了地方 + 措辞通用化，判断风险低所以没重复跑，但这仍然是一个
+   没有闭环验证的点，不要当成"已验证"
+3. `@describeadmin/create-app` 发布 npm 之后，应该补一次不加 stub 的完整端到端跑通
+
 
 ## 已知欠账
 

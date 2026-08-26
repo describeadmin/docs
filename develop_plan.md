@@ -677,6 +677,36 @@ npm create @describeadmin/app <项目名>
 
 **验收标准**：一个此前没接触过本框架的开发者，照上述步骤能在 30 分钟内得到一个可登录、带 RBAC、含一个自建业务模块的后台，且全程不需要阅读 `VERSION_BASELINE.md`。
 
+#### 9.5.1 统一入口：`workspace` 仓库
+
+上面五步里的第 1、2 步（archetype、create-app）各自独立、互不知道对方的存在，第 3~5 步
+则完全靠开发者自己手工衔接。这暴露了一个更深的缺口：目标 #2「面向 AI 编程」、
+目标 #4「worktree 友好」、目标 #5「AI 自动化测试」在业务方这一侧从未有过交付物——
+此前这三个目标只体现在框架团队自己的验证载体（`sample-app`/`sample-frontend`）上，
+业务方拿到的只是一个能跑的后台，没有配套的 AI 工作目录、本地环境编排、可视化测试机制。
+
+`describeadmin/workspace` 仓库把这个缺口补上，作为业务方唯一需要知道的入口：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-workspace.sh \
+  | bash -s -- <workspace-name>
+```
+
+一条命令同时完成 9.5 的第 1、2 步，并额外生成：
+
+- 业务方视角的 `CLAUDE.md`（不是框架团队 `docs` 仓那份——那份讲插件作者规范、
+  发布治理，业务方用不上，是完全独立起草的文档）
+- `.claude/skills/dev-env`：本地开发环境一键拉起/销毁，支持多个 `git worktree`
+  并行开发各自独立（落地目标 #4）
+- `.claude/skills/visual-test`：AI Agent 直接用 chrome-devtools MCP 驱动浏览器 +
+  DB 查询做结构化断言，不写额外的测试运行时（落地目标 #5，设计取舍见第五章的
+  "不写解释器"原则——这条原则最初就是在给这个 skill 定型时确认下来的）
+
+`workspace` 仓库由框架团队维护、随 `repos.yml` 被 `clone-all.sh` 拉取，但它的**产出**
+（`CLAUDE.md`/`.claude/skills/`）走向的是业务方工作空间，不是框架团队自己用——这是它与
+`docs`/`codegen` 等仓库的本质区别：后两者的受众是框架团队自己或需要被依赖引用，
+前者的唯一职责是把文件铺进业务方的工作空间。
+
 ### 9.6 业务方升级时做什么
 
 | 层 | 动作 | 破坏性变更时 |
@@ -698,6 +728,7 @@ npm create @describeadmin/app <项目名>
 | `@describeadmin/system-ui`（前端系统管理收包） | 阶段 1（与 `framework-system-starter` 对称，宜同期完成） |
 | `npm create @describeadmin/app` | 阶段 1 |
 | `describeadmin-codegen-maven-plugin` | 阶段 1（codegen 本体已有，此处只是补交付形态） |
+| `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test` 两个 skill，9.5.1） | 阶段 1（依赖 archetype、create-app 已存在） |
 
 ***
 

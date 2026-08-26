@@ -85,6 +85,33 @@ repos:
     lang: java
     desc: 数据库兼容性自检工具（见 develop_plan.md 2.3.3 / 5.5）
 
+  # ---------- 业务方工作空间 ----------
+  #
+  # 与上面 core/tools 两组的关键区别：那两组是框架团队自己用/自己发布给业务方当依赖的东西，
+  # 业务方不会直接 clone 它们。这一组的受众是业务方本身——本仓库虽然由框架团队维护
+  # （所以照样登记在这里、照样被 clone-all.sh 拉取），但它的产出是直接进业务方工作空间的
+  # 文件（CLAUDE.md、.claude/skills/），不是 Maven/npm 依赖。
+  - name: workspace
+    group: enablement
+    status: planned
+    lang: shell
+    desc: >
+      业务方工作空间初始化器——init-workspace.sh 一条命令生成 <name>-server
+      （archetype）+ <name>-web（create-app）+ AI 工作目录（业务方视角的 CLAUDE.md +
+      .claude/skills/ 下的 dev-env、visual-test 两个 Claude Code skill）
+    note: |
+      承接 develop_plan.md 目标 #2/#4/#5（面向 AI 编程、worktree 支持、AI 自动化测试）
+      在业务方侧的落地——这三个目标此前只有框架团队自己的验证载体（sample-app/
+      sample-frontend），从未有交付给业务方的东西。首选分发方式是
+      `curl -fsSL .../init-workspace.sh | bash -s -- <name>`，不需要业务方先手工
+      clone 任何仓库。
+      仓库结构与生成物结构 1:1 对应（仓库根目录下除 README.md/init-workspace.sh 外的
+      每样东西都会被原样复制到生成出的工作空间），细节见该仓库自己的 README.md。
+    publishes:
+      # ⚠️ 尚未建仓推送（本地已写完，创建远端 GitHub 仓库前照惯例需要人工确认，
+      #    见 framework-auth-email-starter/framework-crypto-starter 两次先例）。
+      # 不发布 Maven/npm 制品——产出是文件，不是依赖坐标。
+
   # ---------- 后端可选插件 ----------
   #
   # 插件一律独立成仓（3.1.1），不作为 framework 仓的 module。
