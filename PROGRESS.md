@@ -8,7 +8,9 @@
 
 **最后更新：2026-08-26（账号密码登录接入渐进式图形验证码，
 跨 framework / sample-app / frontend / sample-frontend 四仓，已提交并推送到各自分支；
-同日又把工作台首页从 system-ui 移出到各应用外壳，纯前端，本地未提交）**
+同日又把工作台首页从 system-ui 移出到各应用外壳，纯前端，本地未提交；
+同日再交付"个人中心"自助改资料/改密码，四仓 `feat/profile-self-service` 分支，
+framework / sample-app / frontend 已推送，sample-frontend 本地仓库无远端）**
 
 ***
 
@@ -760,6 +762,56 @@ scenarios/dept-create.yaml}`。`docs/repos.yml` 新增 `enablement` 分组登记
 - 本轮改动只涉及前端（`frontend` + `sample-frontend`），未提交/推送，本地验证用
   chrome-devtools 打开 `/dashboard/workbench`，确认控制台无告警、网络面板不再出现
   那四个接口、页面正常渲染问候语与角色标签
+
+### 个人中心：自助改资料/改密码 + 密码复杂度策略（2026-08-26）
+
+用户反馈"个人中心"是个从 Vben 脚手架继承下来、从没接后端的静态页面（`基本设置`
+能读不能写、`修改密码`点提交只弹一条假成功提示，`安全设置`/`新消息提醒`全是硬编码
+假数据）——`docs/PROGRESS.md` 此前从未把这个页面列为已知欠账，`develop_plan.md`
+也没有针对它的设计章节，是个纯粹被遗漏的空白点。已按以下范围补齐，
+四仓 `feat/profile-self-service` 分支：
+
+- **基本设置**：允许自助改姓名/手机号/邮箱，用户名只读、角色字段（此前是假数据）
+  整体删除。后端新增 `GET/PUT /api/auth/profile`（`AuthController`），
+  `SysUserService.updateOwnProfile`
+- **修改密码**：接通此前已经存在但前端从未调用过的 `PUT /api/auth/password`
+  （2026-08-22 那批登录模块修复里就做完了后端，只是没接前端），并补上一套此前完全
+  没有的密码复杂度策略——新增 `PasswordPolicy` SPI（`framework-security-starter`，
+  与 `TokenStore`/`CacheProvider` 同一"契约 + 零依赖默认实现"模式），默认口径
+  8 位 + 大写/小写/数字/特殊字符至少 3 类，套用到自助改密/管理员重置密码/创建用户
+  设初始密码三处入口（用户明确要求"三处全部统一生效"）
+- **安全设置**：无对应功能，直接删除（含 `security-setting.vue`）
+- **新消息提醒**：功能尚未实现，从 tabs 里摘掉但保留 `notification-setting.vue`，
+  等消息通知能力上线后再接回来
+
+**过程中意外发现并修复了两个数据权限相关的既有 bug**——本次新增的 HTTP 层集成测试
+（`AuthFlowIT`）第一次让"无角色的普通用户"以真实登录态跑通自助端点全链路时暴露，
+此前的测试要么用 admin（`dataScope=ALL`，天然绕过这条过滤），要么直接调 Service
+方法（不经过 `SecurityContextHolder`，数据权限过滤同样不生效），从未真正测到：
+
+1. 无角色用户默认 `dataScope=SELF`，`DeptDataPermissionHandler` 对 `sys_user`
+   表的过滤条件是 `create_by = 当前用户id`——但用户自己的账号几乎总是管理员创建的，
+   结果是"自己查自己都查不到"，`GET /api/auth/profile` 返回 `data: null`，
+   改资料/改密码的 `updateById` 也会因为同一个过滤条件静默影响 0 行。
+   新增 `SysUserMapper.selectSelfById`/`updateSelfPassword`/`updateSelfProfile`
+   （`@InterceptorIgnore(dataPermission = "true")`）绕开过滤，只供确认是当前
+   登录用户自己时使用
+2. `findByMobile`/`findByEmail` 用于全局唯一性校验，同样受这条过滤影响——
+   SELF/DEPT 档的操作者会把"已被别人占用但自己看不到"的手机号/邮箱误判为可用。
+   同样改为忽略数据权限的查询
+
+验证：`sample-app` 102 个集成测试全绿（含新增的密码策略正/反例、自助资料 HTTP 层
+测试、手机号冲突检测）；`framework-security-starter` 新增 `DefaultPasswordPolicyTest`
+7 例全绿；三处前端（`apps/admin`/`create-app/template`/`sample-frontend`）
+`typecheck`/`build` 均干净；用 chrome-devtools 以真实无角色用户账号走完整链路
+（改资料成功、手机号冲突正确拒绝、弱密码被前后端双重拒绝、改密成功后正确跳转登录页、
+新密码可登录）。过程中还顺带修了一个前端自己的 bug：改密成功后原先直接调
+`authStore.logout()`，会跟框架内置的 401 自动重新认证拦截器抢着处理同一个已失效
+令牌，两边并发 `resetAllStores`+跳转互相打断，实测卡在原地不跳转；改为改密成功后
+直接清本地登录态并跳转，不再触发这条竞态。
+
+四个仓库均已提交到 `feat/profile-self-service` 分支；`framework`/`sample-app`/
+`frontend` 已推送到远端（尚未开 PR），`sample-frontend` 是本地仓库无远端。
 
 ## 已知欠账
 
