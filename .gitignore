@@ -41,7 +41,3 @@ Thumbs.db
 *.log
 logs/
 tmp/
-
-# ---- dev.sh 的每 worktree 运行状态（pid 文件、后台进程日志）----
-scripts/.worktree/
-.worktree/
