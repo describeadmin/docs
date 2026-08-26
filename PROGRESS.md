@@ -7,7 +7,8 @@
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
 **最后更新：2026-08-26（账号密码登录接入渐进式图形验证码，
-跨 framework / sample-app / frontend / sample-frontend 四仓，已提交并推送到各自分支）**
+跨 framework / sample-app / frontend / sample-frontend 四仓，已提交并推送到各自分支；
+同日又把工作台首页从 system-ui 移出到各应用外壳，纯前端，本地未提交）**
 
 ***
 
@@ -260,6 +261,7 @@ codegen 与三份前端 `auth.ts` 必须同批跟上，否则生成的前端类�
   系统管理四页面（dept/menu/role/user）+ 首页统计卡片（`dashboard/index`，随它一起搬走——
   它展示的是 `framework-system-starter` 四个实体的统计数，且 `component` 值被
   `seed-rbac.sql` 硬编码为登录后必须存在的首页路由，本质是框架基础设施不是业务内容）。
+  ⚠️ **`dashboard/index` 这部分结论已于 2026-08-26 撤销，见下方新记录。**
   接口层不内置 `requestClient`：导出 `provideSystemApiClient(client)`，认证头/过期重登
   策略仍由消费方决定（这层策略天然是应用可自定义的东西）。`apps/admin` 现在反过来
   依赖本包（`workspace:*`），`router/access.ts` 的 `pageMap` 与包导出的 `systemPageMap`
@@ -725,6 +727,40 @@ scenarios/dept-create.yaml}`。`docs/repos.yml` 新增 `enablement` 分组登记
 （各家 JS SDK 初始化方式不同，没有统一协议），不是"后端装插件、前端零代码"，这条
 结论供以后接具体厂商时参考。
 
+### 工作台首页从 system-ui 移出（2026-08-26，纯前端，仅 `frontend`/`sample-frontend`）
+
+用户先反馈"工作台/用户管理页面把 `framework-system-starter` 之类的实现说明当成
+`Page` 的 `description` 展示给了最终用户"，改成注释后引出一个更根本的问题：
+工作台首页原本靠并发请求 `/api/system/{user,role,menu/tree,dept/tree}` 四个接口算
+统计数字，而这四个接口分别要求对应模块的 `xxx:list` 权限——只分配了"工作台→概览"
+菜单的用户登录后这四个请求全部 403，还会触发全局错误提示。讨论后决定：**工作台首页
+不再请求任何接口**，改成纯静态欢迎页（问候语按时段计算、用户名/角色来自登录时已有的
+`userStore`、四张卡片换成静态能力介绍文案）。
+
+改完之后用户追问了一个更深的问题：这个页面既然已经不依赖任何 `framework-system-starter`
+实体，还应不应该继续放在 `@describeadmin/system-ui`（随框架版本发布）？结论是**不应该**，
+理由与上面 2026-08-21 记录里"进 system-ui"的判据（是否围着框架实体转）正好相反，
+已按此把它挪出：
+
+- `frontend/packages/effects/system-ui/src/views/dashboard/` 整个删除，
+  `src/index.ts` 的 `systemPageMap` 去掉 `/dashboard/index.vue` 这一条
+- 迁到三处应用外壳各自的 `views/dashboard/index.vue`（`apps/admin`、
+  `packages/create-app/template`、`sample-frontend`），定位对齐既有先例
+  `views/_core/profile`/`views/_core/about`——这类"通用但归属具体应用、不是框架能力"
+  的页面本来就该在外壳里，业务方生成项目后可以直接改问候语/文案/快捷入口
+- 顺带修了一个在排查这个问题时发现的合并顺序缺陷：三处 `access.ts` 原来是
+  `{ ...import.meta.glob('../views/**/*.vue'), ...systemPageMap }`，`systemPageMap`
+  展开在后——同 key 时框架默认页面会**静默覆盖**业务方本地同名页面，且没有任何报错。
+  已调整为 `systemPageMap` 展开在前，业务本地 `views` 覆盖框架默认，这才是符合直觉
+  的语义（本条同时补进了下面"容易忘的约束"第 10 条）
+- `packages/create-app/README.md` 关于"哪些目录不该出现在 template 里"的说明同步更新：
+  `views/dashboard` 从"不应该出现"改成"应该出现"（例外说明写在原地）
+- `seed-rbac.sql` 的 `component = 'dashboard/index'` 不用改，它只是个 key，
+  不关心物理文件在哪个包
+- 本轮改动只涉及前端（`frontend` + `sample-frontend`），未提交/推送，本地验证用
+  chrome-devtools 打开 `/dashboard/workbench`，确认控制台无告警、网络面板不再出现
+  那四个接口、页面正常渲染问候语与角色标签
+
 ## 已知欠账
 
 **前端**（每进核心一个模块就多一页）
@@ -803,4 +839,11 @@ scenarios/dept-create.yaml}`。`docs/repos.yml` 新增 `enablement` 分组登记
    把 `BizException` 转成 HTTP 200 + 错误码，发生在 Spring MVC 的异常解析阶段，
    晚于 AOP 环绕通知——`OperLogAspect` 的 `catch` 块看到的是原始异常，
    这也是"失败的操作也要落日志"这条能成立的前提，改动异常处理链路时留意别破坏这个时序。
+10. **判断一个前端页面该不该进** **`system-ui`，看它是否围着** **`framework-system-starter`**
+    **的实体转**，不是看它"看起来像不像系统管理页面"。工作台首页最初因为展示四个实体的
+    统计数字而放进 system-ui，后来改成不请求接口的纯静态欢迎页后就应该挪出去——这类
+    "通用但归属具体应用"的页面（同 `views/_core/profile`/`views/_core/about`）该待在
+    应用外壳里，业务方能直接改。三处 `access.ts` 合并 `pageMap` 时，`systemPageMap`
+    必须展开在业务本地 `import.meta.glob('../views/**/*.vue')` **之前**，让本地同名
+    页面覆盖框架默认，反过来会被静默吃掉且没有报错。
 
