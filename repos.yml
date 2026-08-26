@@ -93,7 +93,7 @@ repos:
   # 文件（CLAUDE.md、.claude/skills/），不是 Maven/npm 依赖。
   - name: workspace
     group: enablement
-    status: planned
+    status: active
     lang: shell
     desc: >
       业务方工作空间初始化器——init-workspace.sh 一条命令生成 <name>-server
@@ -108,8 +108,8 @@ repos:
       仓库结构与生成物结构 1:1 对应（仓库根目录下除 README.md/init-workspace.sh 外的
       每样东西都会被原样复制到生成出的工作空间），细节见该仓库自己的 README.md。
     publishes:
-      # ⚠️ 尚未建仓推送（本地已写完，创建远端 GitHub 仓库前照惯例需要人工确认，
-      #    见 framework-auth-email-starter/framework-crypto-starter 两次先例）。
+      # 已建仓并推送（2026-08-26，人工确认后）：
+      # github.com/describeadmin/workspace（main 分支）。
       # 不发布 Maven/npm 制品——产出是文件，不是依赖坐标。
 
   # ---------- 后端可选插件 ----------

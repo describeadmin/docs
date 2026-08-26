@@ -630,14 +630,16 @@ scenarios/dept-create.yaml}`。`docs/repos.yml` 新增 `enablement` 分组登记
   `dev up`，第二次在 Redis 容器创建那步撞上"name already in use"。已记录进头部注释的
   已知限制（不加锁，避免过度设计——单次调用本身幂等，问题只在并发调用这个边缘场景）
 
+**已解决（2026-08-26）**：`workspace` 仓库已人工确认后建仓并推送：
+[github.com/describeadmin/workspace](https://github.com/describeadmin/workspace)
+（`main` 分支）。`docs/repos.yml` 已同步改回 `active`。
+
 **待办（下次开工先看这里）**：
-1. `workspace` 仓库本地已完成，创建远端 GitHub 仓库前需要人工确认（`gh repo create`
-   属于对外操作，照 `framework-auth-email-starter`/`framework-crypto-starter` 的先例办）
-2. `visual-test` 的 `dept-create.yaml` 在这个新仓库的文件布局下**没有重新跑一遍**——
+1. `visual-test` 的 `dept-create.yaml` 在这个新仓库的文件布局下**没有重新跑一遍**——
    跑之前用的核心机制（`click`/`fill` 走 `uid`、DB 断言用 `mysql` CLI）本轮之前已经
    验证过，本次只是文件挪了地方 + 措辞通用化，判断风险低所以没重复跑，但这仍然是一个
    没有闭环验证的点，不要当成"已验证"
-3. `@describeadmin/create-app` 发布 npm 之后，应该补一次不加 stub 的完整端到端跑通
+2. `@describeadmin/create-app` 发布 npm 之后，应该补一次不加 stub 的完整端到端跑通
 
 
 ## 已知欠账
