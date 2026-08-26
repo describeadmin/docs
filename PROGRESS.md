@@ -559,6 +559,43 @@ F 项打下的地基（`sys_user.mobile`/`email` + `AuthUserLoader.loadByUserId`
 （`master` 分支）。`docs/registry.md`/`repos.yml` 已同步改回"待发布"/`active`，与
 `framework-auth-email-starter` 一样等 framework 0.2.0 先发 Central 才能跟着发。
 
+***
+
+### Worktree 隔离工具 scripts/dev.sh（2026-08-26）
+
+用户提出"面向 AI 编程 / 全自动可视化测试 / worktree 友好"三个设计初衷至今没有对应交付物，
+讨论后确定实现顺序：**worktree 工具先行**，因为 5.6 明确"测试环境的命名空间隔离直接复用
+第六章的 worktree 隔离方案"——按路线图原顺序（阶段 3 测试在阶段 4 worktree 之前）会导致
+测试基础设施先用临时隔离参数、worktree 落地后再返工。这是本轮对路线图顺序的一次修正，
+`develop_plan.md` 本身不改（只记结论不记状态），此处仅作记录。
+
+- **新增** **`docs/scripts/dev.sh`**：落地 6.1/6.2 的设计。slug 直接对**工作区根目录的绝对
+  路径**取 hash（不反推 git 分支名——多仓拓扑下没有单一权威来源），派生端口偏移
+  （0~495，步长 5）与 Redis db index（0~15）。两层隔离模型：
+  - `dev up/down/status/logs`：共享的 `da-mysql`（宿主机 3307，与 `application-local.yml`
+    注释里此前就手工使用的约定完全一致）+ `da-redis` 常驻实例，按 worktree 建独立 schema
+    （`describeadmin_<slug>`）；`sample-app`/`sample-frontend` 按 worktree 起独立后台进程
+    （`SERVER_PORT`/`SPRING_DATASOURCE_URL` 走 Spring 环境变量覆盖，前端走已有的
+    `VITE_PROXY_TARGET` + `vite --port`——两处都是**已经存在的覆盖点**，本轮没有改动
+    `sample-app`/`sample-frontend` 任何源码）
+  - `test up/down/status`：包一层已有的 `docker-compose.test.yml`（5.1 阶段就已落地，
+    本轮之前没人接上 slug），传入 `COMPOSE_PROJECT_NAME`/`MYSQL_TEST_PORT`/`REDIS_TEST_PORT`
+  - 已验证：两个不同工作区路径算出的 slug/端口/schema 互不相同（`slug`/`dev status`
+    子命令用真实工作区与一个模拟的第二工作区分别跑过）；`dev up`/`test up` 依赖 Docker
+    与 Maven/pnpm 实际启动，本轮**未在真实 Docker 环境下跑通**，是已知的验证缺口
+  - **已知限制**（写在脚本头部注释里，不藏着）：`dev down` 用 pid 文件杀进程，
+    Windows 上 `mvn`/`pnpm` 会派生真正的 java/node 子进程，脚本用
+    `taskkill //F //T //PID` 尽量连子进程一起杀，极端情况下可能需要手动确认端口已释放；
+    共享 `da-mysql` 的 `app` 用户默认（官方镜像行为）只被授权访问 `MYSQL_DATABASE`
+    （`describeadmin`）这一个库，脚本首次建共享容器/建新 schema 时都显式 `GRANT`，
+    否则会在登录时报 `Access denied` 而不是更直观的"库不存在"
+  - `docs/.gitignore` 新增 `.worktree/`（脚本的 pid 文件与后台进程日志落在这里）
+
+**下一步（可视化测试，阶段 3）**：按同一次讨论的结论，下一步是给 5.4 的结构化 YAML Spec
+接一个执行器——建议"硬"部分（DB 断言、证据归档）写脚本，"软"部分（导航/点击/截图）
+交给 AI Agent 直接调用 chrome-devtools MCP 执行，不要另写一个 Puppeteer 驱动去解释执行
+Spec（那样会丢失"AI 能在断言失败时自己读 console/DOM 诊断"这个价值）。尚未开工。
+
 ## 已知欠账
 
 **前端**（每进核心一个模块就多一页）
