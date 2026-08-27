@@ -6,7 +6,63 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-27（在线用户模块升级：加登录 IP/设备列 + 后端分页，见下方新增章节）**
+**最后更新：2026-08-27（邮箱登录前端接线下沉进 `@describeadmin/ui`，三个 app 拉平，见下方新增章节）**
+
+***
+
+## 2026-08-27 追加：邮箱登录前端接线下沉进框架包（修"倒反天罡"）
+
+用户走查：sample-app 的 `/api/auth/providers` 已返回 `["password","email"]`，但登录页
+不显示邮箱登录入口。定位到根因**不是插件问题**，而是前端分层错位：邮箱登录的
+app 级接线（`showEmailLogin` 跟 providers 联动、`email-login.vue`、`/auth/email-login`
+路由、`sendEmailCodeApi`）当时只做进了 `sample-frontend`，`apps/admin` 与
+`packages/create-app/template` 都没有——于是 `create-app` 脚手架生成的新前端即使后端
+装了 `framework-auth-email-starter` 也不显示邮箱登录。`sample-frontend` 只是消费方
+验证仓，却跑在了框架前面。
+
+**按方案 2 处理：把「按 providers 渲染登录入口 + 邮箱验证码登录表单」整体下沉进
+`@describeadmin/ui`，三个 app 只留注入 store/api 的薄接线，且这次三处同时改、起点一致。**
+
+`@describeadmin/ui`（`packages/effects/common-ui`）：
+
+- `AuthenticationProps` 新增 `providers?: string[]`；`AuthenticationLogin` 据此推导
+  邮箱入口显隐（`showEmailLogin` 显式传时优先，否则看 `providers` 是否含 `email`）。
+  只认 `email` 这一项——框架内也只有邮箱插件是真实存在的第二种能力。
+- 新增 `AuthenticationEmailLogin`（`email-login.vue`）：包裹 `AuthenticationCodeLogin`，
+  内建邮箱 + 验证码表单 schema / 校验 / 发码节流；`sendCodeApi` 由业务方注入
+  （框架包不持有 requestClient），`@submit` 抛 `{email,code}` 给业务方补 `type`。
+- `@describeadmin/locales` 新增 `authentication.emailLoginSubtitle`（zh/en），
+  邮箱登录页标题用 📧 覆盖 CodeLogin 默认的 📲（短信语义）。
+
+三个 app（`apps/admin` / `packages/create-app/template` / `sample-frontend`，三份文件逐字一致）：
+
+- `login.vue`：`:providers="providers"` 透传给 `<AuthenticationLogin>`；`handleSubmit`
+  的 `type` 由脆弱的 `providers.value[0]` 统一改为硬编码 `'password'`（这张表单固定是
+  用户名密码）。app 内不再有 `showEmailLogin` computed。
+- `views/_core/authentication/email-login.vue`：~20 行薄包装，注入
+  `sendEmailCodeApi` + `authStore.authLogin({...values, type:'email'})`。
+- `router/routes/core.ts`：始终注册 `EmailLogin` 路由——让"装了邮箱插件就能用"成立、
+  业务方不改前端；未装插件时直达该 URL 会渲染提交必失败的表单，是可接受取舍
+  （背后有真实后端信号门控，不同于 A 项删掉的 CodeLogin/QrCodeLogin 纯死壳）。
+- `api/core/auth.ts`：`sendEmailCodeApi`（对应插件的 `POST /api/auth/email/code`）。
+- `locales/langs/{zh,en}/page.json`：`auth.emailLogin`。
+
+**验证**：`apps/admin` `vue-tsc --noEmit` 干净；`@describeadmin/ui` + `@describeadmin/locales`
+tsdown 构建通过；`sample-frontend` 重跑 `pack-local-deps.sh` + `pnpm install` +
+`vite build` 通过（`vue-tsc` 仅剩既有的 `router/guard.ts:108` 无关报错）。
+chrome-devtools 端到端走查 `sample-frontend`：登录页出现邮箱入口 → 点击进
+`/auth/email-login` → 框架组件链 `EmailLogin → AuthenticationEmailLogin →
+AuthenticationCodeLogin` 正常 → 填邮箱点「获取验证码」→ `POST /api/auth/email/code`
+返回 200、倒计时启动。`componentProps` 的 `[Vue warn]` 是 `@core/form-ui` 既有告警
+（`/auth/login` 上也有），非本轮引入。
+
+**约束（记进 memory）**：`sample-frontend` 只能跟随框架，不能领先——功能先落
+`@describeadmin/*` 包 + `apps/admin` + `create-app/template`，再让 sample-frontend 拉平。
+
+**未做**：`apps/admin` / `sample-frontend` 未启新 dev server 长期验证（走查用的临时
+5173 端口 server 已关）；四个仓 `0.2.0-dev` 本地已改，尚未提交推送时见下方 git 状态。
+另注意 `apps/admin` 与 `sample-frontend` 的 `.env.development` 都写死 `VITE_PORT=5777`，
+谁先起谁占端口，容易看错 app——本轮未改，可考虑给 `apps/admin` 换个端口。
 
 ***
 
