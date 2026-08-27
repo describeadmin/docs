@@ -6,8 +6,53 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-27（token 过期时前端不跳转登录页 + 登录失效提示重复/文案不一致，
-均已修复，见下方新增章节）**
+**最后更新：2026-08-27（在线用户模块升级：加登录 IP/设备列 + 后端分页，见下方新增章节）**
+
+***
+
+## 2026-08-27 追加：在线用户模块升级（登录 IP/设备 + 分页）
+
+用户反馈两点：在线用户列表没有登录 IP / 登录设备；且怀疑没做分页，在线用户多时
+一页全展示有问题。核实：确实两处都没有分页（后端 `list()` 返回全量 `List`，前端
+裸 `ElTable` 无 `ElPagination`）。均已在 `0.2.0-dev` 上做完，**四个仓库本地已提交**
+（`framework` / `framework-cache-redis-starter` / `frontend` / `sample-app`），
+`sample-frontend` 只是消费方无源码改动。
+
+**新增能力**
+
+1. **登录 IP + 登录设备**。新增 `SessionMeta`（`api/`，IP + 设备）；`TokenStore`
+   加 `issue(user, meta)` / `issueWithRefresh(user, meta)` 两个 `default` 重载
+   （默认忽略 `meta`，延续 `listActive` 那套加法）；`ActiveSession` 加 `ip` / `device`
+   两个字段。`AuthController.login` 注入 `HttpServletRequest`，用新增的
+   `RequestClientInfo`（`framework-system-starter` 内部，非 `api/`）提取：IP 走
+   `X-Forwarded-For` 首段 → `X-Real-IP` → `remoteAddr`；设备对 `User-Agent` 做
+   **轻量启发式**（`Chrome · Windows` 这种粒度，不引 UA 解析库），识别不出为 `null`。
+   `OperLogAspect` 一并改用 `RequestClientInfo.clientIp`（顺带让操作日志也认
+   `X-Real-IP`）。刷新令牌时来源随会话延续（内存实现存进 `Entry`/`RefreshEntry`，
+   Redis 实现存进 `StoredSession` 的两个扁平字段）。
+2. **后端分页**。`GET /api/system/online` 改为接受 `PageQuery`、返回
+   `PageResult<ActiveSession>`。分页在 `SysOnlineController` 应用层对
+   `tokenStore.listActive()` 的全量快照切片——`TokenStore` 没有分页入参，翻页会重复
+   一次全量枚举，但这是低频管理页、在线会话数天然有界，换来的是与其余列表页一致的
+   `PageResult` 契约。前端 `views/online/index.vue` 照抄 `oper-log` 的分页写法加
+   `ElPagination` + 「登录IP」「登录设备」两列（`data-testid="online-pagination"`）。
+
+**Breaking（0.2.0 未发布，不留兼容）**
+
+- `ActiveSession` 构造函数新增 `ip` / `device` 两个参数，不保留旧重载。
+- `GET /api/system/online` 返回体 `List<ActiveSession>` → `PageResult<ActiveSession>`。
+
+**测试**：`InMemoryTokenStoreTest` / `RedisTokenStoreTest` 各 +3（来源写入、可选、
+刷新延续）；新增 `RequestClientInfoTest`（IP 头优先级 + UA 启发式，10 例）；
+`sample-app` `OnlineSessionIT` +3（分页信封、`X-Forwarded-For`+UA 端到端、`size` 生效）。
+`framework` 两模块单测全绿；`framework-cache-redis-starter` `RedisTokenStoreTest` 23 全绿
+（Testcontainers）；`sample-app` `OnlineSessionIT`(7) / `AuthFlowIT` / `RefreshTokenIT`
+/ `FrameworkRuntimeIT` 全绿；前端 `apps/admin` `vue-tsc --noEmit` 干净。
+CHANGELOG：`framework`、`framework-cache-redis-starter` 均已补。
+
+**未做**：`sample-frontend` 按"已发布依赖"方式消费 `@describeadmin/system-ui`，
+其 `dist` 是旧的；要在 sample-frontend 里看到新页面需先 `pnpm build` 共享包
++ `pack-local-deps.sh` + `pnpm install`，本轮未跑（与前一章节同一情况）。
 
 ***
 
