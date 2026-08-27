@@ -6,11 +6,57 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-26（分支模型整理：全部 10 个仓库统一为 `main`（稳定基线，
-不再改动）+ `0.2.0-dev`（唯一的开发分支）。此前散落的 feat/\*、test/\*、docs/\* 等
-开发分支已合并进各自仓库的 `0.2.0-dev` 并推送，旧分支本身**没删**，只是不再是工作分支。
-下面「五个 PR 待合并」一节描述的是旧的、基于 PR 合入 main 的流程，**已不适用**——
-见本节之后新增的「分支模型」一节）**
+**最后更新：2026-08-27（token 过期时前端不跳转登录页 + 登录失效提示重复/文案不一致，
+均已修复，见下方新增章节）**
+
+***
+
+## 2026-08-27 追加：token 过期不跳转登录页 + 登录失效提示重复/文案不一致
+
+用户反馈的三个连续问题，根因各不相同，均已在 `0.2.0-dev` 上修完（尚未提交/推送）：
+
+1. **token 过期后页面不跳转登录页**。根因：`refreshTokenApi`/`logoutApi` 此前用
+   挂了 `authenticateResponseInterceptor` 的 `requestClient`，导致这两个"重新认证
+   流程自己要调用的接口"在 `isRefreshing=true` 临界区内被同一套拦截器递归重入，
+   `logout()` 里 `await logoutApi()` 永久挂起。修复：新增 `authLifecycleRequestClient`
+   （拦截器栈去掉 `authenticateResponseInterceptor`），`refreshTokenApi`/`logoutApi`
+   改用它。
+2. **修复①之后出现一条"内部服务器错误"误报**。根因：`authenticateResponseInterceptor`
+   刷新令牌失败的 `catch` 块里 `throw refreshError`（刷新请求自己的错误，已被
+   `RequestClient.request()` 剥掉 `.response` 只剩后端返回体）而不是 `throw error`
+   （原始请求的错误，带 `.response.status`），导致下一层按状态码分类时读到
+   `undefined`，落进 `default` 分支。修复：改成 `throw error`，与旁边
+   `!enableRefreshToken || config.__isRetryRequest` 分支保持一致。
+3. **登录失效时并发弹出多条提示，且文案不统一**（一条是标准 401 的
+   "未认证或登录已过期"，一条是 `/auth/refresh` 业务失败自定义的
+   "刷新令牌无效或已过期，请重新登录"）。两个独立问题：
+   - **文案统一**：`errorMessageResponseInterceptor` 新增 `unauthorizedCode` 选项，
+     把"HTTP 401"和"业务码 40100（`ResultCode.UNAUTHORIZED`）"这两种登录失效的
+     出场形式统一识别为 `isAuthExpired`，命中时不再用 `responseData.message`，
+     固定展示 i18n `ui.fallback.http.unauthorized` 文案。新增
+     `@describeadmin/constants` 的 `RESULT_CODE_UNAUTHORIZED` 常量。
+   - **只弹一次**：新增模块级标记 `authExpiredNotified`（三个 app 各一份
+     `src/api/auth-expired-notify.ts`），同一次登录失效事件只让第一个命中的
+     请求弹提示。**踩坑记录**：这个标记最初放进了 Pinia 的 `accessStore`，
+     实测从 3 条只降到 2 条——`logout()` 内部的 `resetAllStores()` 会在
+     "最先触发这一切的原始请求"自己走到判断点之前就把标记提前清零，导致它
+     绕过了去重。改成完全独立于 Pinia 生命周期的模块级变量（只在下次登录
+     成功后复位）才稳定收敛到 1 条。用 chrome-devtools 全新标签页反复复现
+     验证：真实浏览器登录 + 内存里破坏 token + 触发页面请求，稳定只弹 1 条。
+   - 顺带清理：`@describeadmin/system-ui` 的 8 个列表页（user/dept/role/menu/
+     dict/config/online/oper-log）`onMounted` 里的数据拉取此前没有 catch，
+     登录失效时会在控制台产生一条
+     `[Vue warn]: Unhandled error during execution of mounted hook`——功能上
+     无害（全局拦截器已经处理了提示和跳转），但控制台噪音容易误导排查，
+     统一包了一层 try/catch（空 catch，注释说明原因）。
+
+涉及文件：共享包 `preset-interceptors.ts`/`types.ts`（`@describeadmin/request`）、
+`RESULT_CODE_UNAUTHORIZED`（`@describeadmin/constants`）、8 个 system-ui 视图；
+三份各自的 `src/api/request.ts`、新增 `src/api/auth-expired-notify.ts`、
+`src/store/auth.ts`（`apps/admin`、`packages/create-app/template`、
+`sample-frontend`）。`vue-tsc --noEmit`/`eslint` 均干净（sample-frontend 需要先
+`pnpm build` 改动到的共享包再跑 `pack-local-deps.sh` + `pnpm install`，
+它是按"已发布依赖"的方式消费这些包的，不会自动感知源码改动）。
 
 ***
 
