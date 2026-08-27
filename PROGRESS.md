@@ -59,6 +59,18 @@ AuthenticationCodeLogin` 正常 → 填邮箱点「获取验证码」→ `POST /
 **约束（记进 memory）**：`sample-frontend` 只能跟随框架，不能领先——功能先落
 `@describeadmin/*` 包 + `apps/admin` + `create-app/template`，再让 sample-frontend 拉平。
 
+**追加：切换登录方式的过渡中间态**（用户反馈）。`AuthenticationFormView`
+（`@describeadmin/layouts` 的 `authentication/form.vue`）去掉 `mode="out-in"` 后，
+Login ↔ EmailLogin 切换时离场/进场两张表单同时留在文档流里上下堆叠，露出
+"两张表单都可见"的中间态。`form.vue` 加 scoped 样式让离场元素在过渡期间
+`position:absolute; left:0; right:0` 覆盖在进场元素之上——等价 out-in 的观感，
+但不触发 form.vue 注释里记录的 out-in + KeepAlive 卡死。chrome-devtools 实测
+过渡期间两 `.side-content` 的包围盒重叠而非纵向排列。
+
+**踩坑**：本轮用 `pkill -f "vite --mode development"` 关临时 server 时误杀了用户
+`apps/admin` 的 dev server（它随后被父进程自动拉起、换了 PID）。以后关进程按
+具体 PID，不要按命令行模糊匹配。
+
 **未做**：`apps/admin` / `sample-frontend` 未启新 dev server 长期验证（走查用的临时
 5173 端口 server 已关）；四个仓 `0.2.0-dev` 本地已改，尚未提交推送时见下方 git 状态。
 另注意 `apps/admin` 与 `sample-frontend` 的 `.env.development` 都写死 `VITE_PORT=5777`，
