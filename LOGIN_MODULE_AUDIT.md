@@ -189,6 +189,46 @@
 > 邮箱插件不能直接复用（发信介质不同），是独立的后续工作。
 > 插件代码本身已在本地写好并测试（28 例全绿），**远端 GitHub 仓库待人工确认后创建**。
 
+### G. 初始口令固定为 `admin/admin123`，且无强制改密机制（2026-08-27 已交付）
+
+`seed-rbac.sql` 直接 INSERT 一个 `admin` 用户，密码是 `admin123` 的预计算 BCrypt 哈希——
+绕过了框架自己的 `PasswordPolicy`（8 位 + 3 类字符）。这个固定口令还作为字面量散落在
+sample-app 的 7 个集成测试、前端 3 个 e2e 脚本、CI workflow、archetype 模板、多份文档里。
+真实风险：开发者把 `local` 环境用过的库直接当正式库初始库，`admin123` 就带上了生产。
+另外，管理员为别人建号 / 重置密码后，没有任何"强制对方首次登录改密"的机制。
+
+**已交付（三部分）**：
+
+1. **消灭固定口令**。种子里的 admin 用户 INSERT 移出 `seed-rbac.sql`，改由
+   `framework-system-starter` 的 `DevAdminSeeder`（`ApplicationRunner`，
+   `@ConditionalOnProperty(describeadmin.system.dev-seed.enabled=true)`，默认关、只在
+   `application-local.yml` 打开）在库中无任何用户时创建：口令用 `RandomPasswordGenerator`
+   随机生成（经 `PasswordPolicy` 复核），BCrypt 入库，明文写到 `${user.dir}/.passwd`
+   （`.gitignore` 已加）并打印到启动日志。`seed-rbac.sql` 只留结构数据（角色 / 菜单 /
+   权限 / 根部门 / 内置参数），可随开发库带到正式环境。`UsernamePasswordAuthProvider`
+   的占位哈希 `DUMMY_HASH`（原本正好是 `admin123` 的哈希）改为构造期用注入的 encoder
+   现算一个随机串。测试 / e2e / CI 一律从 `.passwd` 读口令，仓库里不再有 `admin123` 字面量。
+
+2. **强制首次改密**。`sys_user` 加 `pwd_reset_required TINYINT NOT NULL DEFAULT 0`。
+   `SysUserService.createUser` / `resetPassword` 置 1，`changeOwnPassword`（走
+   `SysUserMapper.updateSelfPassword` 的手写 SQL）清 0。标记经 `AuthUser` → `LoginUser`
+   （两个 `api/` 类各加一个字段 + 构造重载，不改既有签名）流到前端；
+   `framework-security-starter` 新增 `PasswordResetRequiredFilter`（排在
+   `TokenAuthenticationFilter` 之后），被标记用户除
+   `PUT /api/auth/password` `GET /api/auth/me` `POST /api/auth/logout` 外一律
+   `403 + ResultCode.PASSWORD_RESET_REQUIRED(40105)`。前端登录 / 路由守卫据
+   `LoginUser.pwdResetRequired` 把用户钉在新页 `_core/authentication/password-reset-required.vue`。
+   种子 `admin` 本身 `pwd_reset_required=0`（用的是随机强口令，无需再强制）。
+
+3. **密码定期过期 + 历史不可重用**（参数配置驱动，默认关）。`sys_config` 新增两个
+   内置参数：`sys.password.max-age-days`（`> 0` 时登录若 `now - pwd_update_time` 超期
+   → 复用同一门禁强制改密；`sys_user` 加 `pwd_update_time DATETIME`）、
+   `sys.password.history-count`（`> 0` 时新密码不得命中最近 N 条历史；
+   新表 `sys_user_password_history`，`SysUserService` 三处设密码路径写入 + 校验）。
+   过期判断在 `DbAuthUserLoader` 现算不落库，改参 / 改密即时反映。历史校验刻意不进
+   `framework-security-starter` 的 `PasswordPolicy`（那是零依赖复杂度契约，查库属
+   `framework-system-starter` 职责）。
+
 ---
 
 ## 验证方式（2026-08-22 已按此逐项验证完毕，见各节"进展"）
@@ -216,3 +256,12 @@
   两条路径；`sample-app` 新增 `EmailLoginIT`（5 例，真实 GreenMail 走完整登录链路）。
   手机验证码登录插件立项后，仍需按同一份准入规范第 8 条补自己的两条路径测试
   （这是 CLAUDE.md §4.6 对插件的强制要求）。
+- **G 项（初始口令 / 强制改密，2026-08-27）**：`framework` 全模块 `mvn install` 全绿
+  （新增 `PasswordResetRequiredFilterTest` 4 例、`RandomPasswordGeneratorTest` 51 例）；
+  `sample-app` 108 例在 `mysql:5.7` 与 `mysql:8.4` 两轮全绿，其中新增
+  `PasswordResetRequiredIT`（2 例，HTTP 端到端：建号 → 登录被标记 → 业务接口 40105
+  → 改密 → 旧令牌失效 → 新口令登录放行；管理员重置后再次强制）、
+  `PasswordPolicyRuntimeIT`（2 例，参数打开 / 关闭两侧验证历史校验与定期过期）；
+  既有 7 个 IT 的登录 helper 改从 `.passwd` 读口令、"建号后以该用户身份调接口"的
+  用例补 `clearPwdResetRequired(...)`。前端 `apps/admin` `typecheck` 通过，
+  `apps/admin` 与 `packages/create-app/template` 五个文件逐字一致。

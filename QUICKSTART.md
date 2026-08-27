@@ -128,19 +128,23 @@ IDEA 里也有现成入口：新建项目 → Maven Archetype，填上面三个 
 `local` profile 监听 **8090**，每次启动执行建表与种子脚本。
 框架依赖从 Maven Central 拉取，**不需要你先构建 framework 源码**。
 
-跑起来之后确认一下：
+首次启动时 dev-seed 会创建管理员 `admin`，**口令随机生成**——看启动日志里
+`dev-seed 生成初始管理员` 那几行，或读项目根目录的 `.passwd` 文件（已被 `.gitignore` 忽略）。
+
+跑起来之后确认一下（`$(cat .passwd)` 从项目根读那个随机口令）：
 
 ```bash
 curl -s -X POST http://localhost:8090/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123"}'
+  -d "{\"username\":\"admin\",\"password\":\"$(cat .passwd)\"}"
 ```
 
 应当返回 `{"code":0,...}`，令牌在 **`data.token`**（不是 `accessToken`），
 同时 `data.user` 里带 `nickname` / `roles` / `permissions`。
 
-> **默认账号 `admin` / `admin123` 仅供本地开发。**
-> `local` profile 每次启动都会重放种子脚本，绝不能用于任何真实环境。
+> **`local` profile 用 dev-seed 建随机口令的管理员，仅供本地开发。**
+> 每次启动都会重放种子脚本，绝不能用于任何真实环境；真实环境不要打开
+> `describeadmin.system.dev-seed`。管理员为别人建号 / 重置密码后，对方首次登录会被要求先改密。
 
 ### 生成的工程里有什么
 
@@ -194,7 +198,7 @@ pnpm install
 pnpm dev            # http://localhost:5777
 ```
 
-浏览器打开 5777，用 `admin` / `admin123` 登录。
+浏览器打开 5777，用 `admin` + 后端 `.passwd` 里的随机口令登录（见上文）。
 
 前端**不带 mock**。用 mock 开发前端，等于把前后端契约不一致的问题
 全部推迟到联调阶段才暴露。dev server 默认代理到 `http://localhost:8090`，

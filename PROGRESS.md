@@ -6,7 +6,60 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-27（邮箱登录前端接线下沉进 `@describeadmin/ui`，三个 app 拉平，见下方新增章节）**
+**最后更新：2026-08-27（账号密码安全升级：去掉固定 admin123 + 强制首次改密 + 定期过期/历史，见下方新增章节）**
+
+***
+
+## 2026-08-27 追加：账号密码安全升级（去掉固定 `admin123` + 强制改密 + 定期过期/历史）
+
+用户走查：`seed-rbac.sql` 写死 `admin/admin123`（预计算 BCrypt，绕过 `PasswordPolicy`），
+且散落在 7 个 IT + 3 个 e2e + CI + archetype + 文档。风险是拷 local 库上生产带上弱口令。
+分三部分交付，详见 `docs/LOGIN_MODULE_AUDIT.md` G 项：
+
+**Part 1 — 随机种子口令 + `.passwd`**（`framework-system-starter` / `framework-security-starter`）
+- 新增 `DevAdminSeeder`（`ApplicationRunner`，`@ConditionalOnProperty(describeadmin.system.dev-seed.enabled=true)`，
+  默认关）：库中无用户时创建 `admin`，口令用 `RandomPasswordGenerator` 随机生成（`PasswordPolicy` 复核），
+  BCrypt 入库，明文写 `${user.dir}/.passwd` + 打印启动日志。配置类
+  `FrameworkSystemProperties.DevSeed`。
+- `seed-rbac.sql` 移出 admin 用户 + user_role 两条 INSERT（只留结构数据），文件头注释改写。
+- `UsernamePasswordAuthProvider` 的 `DUMMY_HASH` 常量（原本正好是 `admin123` 的哈希）→
+  构造期用注入 encoder 现算随机串的 `dummyHash` 字段。
+- `.gitignore` 三处（根 / sample-app / archetype `__dot__gitignore`）加 `.passwd`；
+  `application-local.yml`（sample-app + archetype）加 `describeadmin.system.dev-seed.enabled: true`。
+
+**Part 2 — 强制首次改密**
+- `sys_user` 加 `pwd_reset_required TINYINT NOT NULL DEFAULT 0`；`SysUser` 实体加字段。
+- `SysUserService.createUser`/`resetPassword` 置 1；`changeOwnPassword`（`SysUserMapper.updateSelfPassword`
+  的手写 `@Update`）清 0 并刷 `pwd_update_time`。
+- `AuthUser`/`LoginUser`（`api/`）各加 `pwdResetRequired` 字段 + 新构造重载（不改既有签名，
+  既有 `new LoginUser(...)` 调用点零改动）。`DbAuthUserLoader` 传入。
+- `framework-common` `ResultCode` 加 `PASSWORD_RESET_REQUIRED(40105)`。
+- 新增 `PasswordResetRequiredFilter`（`OncePerRequestFilter`，排 `TokenAuthenticationFilter` 之后），
+  白名单 `PUT /api/auth/password` `GET /api/auth/me` `POST /api/auth/logout` `/error`，其余
+  被标记用户请求 → `403 + 40105`。`FrameworkSecurityAutoConfiguration` 装配 + `addFilterAfter`。
+- 前端：`BackendLoginUser` 加 `pwdResetRequired?`；`store/auth.ts` 加 `pwdResetRequired` ref
+  （`authLogin`/`fetchUserInfo` 刷新，`logout`/`$reset` 清）；`router/guard.ts` 把被标记用户
+  钉在新页 `_core/authentication/password-reset-required.vue`（`routes/core.ts` 注册
+  `PasswordResetRequired`）。`apps/admin` 与 `packages/create-app/template` 五个文件逐字一致。
+
+**Part 3 — 定期过期 + 历史不可重用**（`sys_config` 参数驱动，默认 0＝关）
+- `seed-rbac.sql` 加两个内置参数 `sys.password.max-age-days` / `sys.password.history-count`。
+- `sys_user` 加 `pwd_update_time DATETIME`；新表 `sys_user_password_history`（只追加，仿 `sys_oper_log`）+
+  `SysUserPasswordHistoryMapper`（`selectRecentHashes` / `pruneToRecent`，5.7-safe）。
+- `SysUserService` 三处设密码路径：`assertNotRecentlyUsed` + `recordPasswordHistory`（注入 `SysConfigService`）。
+- `DbAuthUserLoader` 注入 `SysConfigService`，登录时按 `pwd_update_time + max-age-days` 现算过期
+  （不落库），并入 `pwdResetRequired` → 复用 Part 2 门禁。
+
+**验证**：`framework` 全模块 `mvn install` 全绿（新增 `PasswordResetRequiredFilterTest` 4 例、
+`RandomPasswordGeneratorTest` 51 例）；`sample-app` 108 例在 `mysql:5.7` + `mysql:8.4` 两轮全绿
+（新增 `PasswordResetRequiredIT` 2 例、`PasswordPolicyRuntimeIT` 2 例；7 个既有 IT 登录 helper
+改从 `.passwd` 读，"建号后以该用户调接口"的用例加 `clearPwdResetRequired`）；`apps/admin`
+`typecheck` 通过。CI workflow 的登录核验步骤改 `cat /tmp/gen/ci-app/.passwd`，并加两条
+生成物校验（`dev-seed` 段存在、`.gitignore` 含 `.passwd`）。
+
+**未做 / 待确认**：未做 chrome-devtools 前端强制改密页的人工走查；`docs/` 母本改动
+（QUICKSTART / LOGIN_MODULE_AUDIT / 本文件）尚未同步到各子仓副本；四仓 `0.2.0-dev`
+本地已改、尚未提交推送。
 
 ***
 
