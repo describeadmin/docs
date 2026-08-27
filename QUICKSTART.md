@@ -51,7 +51,7 @@
 >
 > | | 由什么决定 | 要求 |
 > |---|---|---|
-> | **编译**用的 JDK | 框架源码：`maven-toolchains-plugin`；业务工程：就是 Maven 自己那个 | 框架源码构建需 21；业务工程**不限**，见 §3 |
+> | **编译**用的 JDK | 就是 Maven 自己那个（框架源码与业务工程都不再配 toolchains） | **17+ 即可**，见 §3 |
 > | **Maven 进程本身**跑的 JDK | `JAVA_HOME` / `PATH` | **必须 17+** |
 >
 > 第二条常被忽略，但它会直接让构建失败：`spring-boot-maven-plugin` 的
@@ -76,8 +76,9 @@
 > export JAVA_HOME=/path/to/jdk17     # 不满足时这样改（Windows: $env:JAVA_HOME=...）
 > ```
 >
-> 只有你要**自己构建框架源码**时才需要额外配 toolchains；
-> 只是**使用**已发布的框架制品的话不需要。
+> 框架源码、插件仓、`codegen`、业务工程都**不再用 `maven-toolchains-plugin`**——
+> 只要 Maven 跑在 JDK 17+ 上就能构建，`release=17` 保证产物在 Java 17 上可运行。
+> （唯一例外是 `sample-app`，它刻意用 toolchains 钉 JDK 17 做最低版本验证。）
 
 ---
 

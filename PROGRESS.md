@@ -6,7 +6,26 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-27（账号密码安全升级：去掉固定 admin123 + 强制首次改密 + 定期过期/历史，见下方新增章节）**
+**最后更新：2026-08-27（构建简化：移除 framework 父 POM 与 codegen 的 `maven-toolchains-plugin`，改用 enforcer `requireJavaVersion [17,)`，见下方新增章节）**
+
+***
+
+## 2026-08-27 追加：移除 `maven-toolchains-plugin`，构建 JDK 只要求 ≥ 17
+
+用户走查：`framework/pom.xml` 与 `codegen/pom.xml` 仍用 toolchains 把构建 JDK 钉在 21，
+而唯一真实要求是 Java ≥ 17。`release=17` 已锁定产物字节码，钉具体版本只会让没配
+`~/.m2/toolchains.xml` 的协作者 / AI 以 `Cannot find matching toolchain` 直接构建失败。
+三个插件仓此前已改，这次把父 POM 与 codegen 也一并统一。
+
+- `framework/pom.xml`：删 `maven-toolchains-plugin` + `java.build.version` + 版本属性；
+  enforcer `enforce-rules` 加 `requireJavaVersion [17,)`。
+- `codegen/pom.xml`：删 toolchains；新增 `maven-enforcer-plugin`（原本没有），只挂 `requireJavaVersion [17,)`。
+- 文档同步：`CLAUDE.md` §1 + §4.6（7 份副本）、`develop_plan.md` 2.2.2 新增「第八轮修订」小节 +
+  附录 B、`VERSION_BASELINE.md` 发现 ⑥ 追加 2026-08-27 补充、`registry.md` 新建插件清单、
+  `QUICKSTART.md` §1、`RELEASE.md` 排障表、`framework/README.md`、archetype `README.md`。
+- 未动：`sample-app`（刻意保留 toolchains 钉 JDK 17 做最低版本验证）、各仓 CI（`setup-java` 固定 21）。
+- 已验证：`mvn -f framework/pom.xml clean install` 与 `mvn -f codegen/pom.xml clean package`
+  在 JDK 21、无 `toolchains.xml` 下 BUILD SUCCESS，enforcer `RequireJavaVersion passed`。
 
 ***
 

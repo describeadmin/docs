@@ -1,7 +1,7 @@
 # AI 原生管理后台脚手架 —— 开发方案
 
 **文档状态**：草案 v0.5，技术选型已全部确认并经**权威源核验**，待团队最终评审
-**技术栈**：Java 17+（构建用 21）+ Spring Boot 3.5.16（后端）／ Vue3 + Vben Admin 5.7.0 + Element Plus（前端）
+**技术栈**：Java 17+（构建 JDK ≥ 17 即可）+ Spring Boot 3.5.16（后端）／ Vue3 + Vben Admin 5.7.0 + Element Plus（前端）
 **组织**：`describeadmin`（GitHub：<https://github.com/describeadmin）>
 **编写日期**：2026-08-19（v0.4 修订）
 
@@ -113,7 +113,7 @@
 
 > ⚠️ **未决事项**：Spring Boot 3.5.x 的 OSS 支持终止日期未能核实（`spring.io` 支持时间线页与 `endoflife.date` 在核验环境均不可达）。间接证据表明该线仍活跃，但**精确 EOL 日期需人工查证**，因为它直接决定上述迁移债的偿还时点。这是本方案目前唯一的开放技术问题。
 
-#### 2.2.2 Java 版本策略：最低 17，构建 21，编译目标 17（v0.4 新增）
+#### 2.2.2 Java 版本策略：最低 17，构建 JDK ≥ 17，编译目标 17（v0.4 新增；构建 JDK 策略于第八轮修订）
 
 **事实基线**（已核验）：Spring Boot 3.5.16 的最低 Java 版本是 **17**，不是 21。判据两条——`spring-boot-starter-parent-3.5.16.pom` 中 `<java.version>17</java.version>`；`spring-boot-3.5.16.jar` 的 `MANIFEST.MF` 中 `Build-Jdk-Spec: 17`。
 
@@ -121,18 +121,19 @@
 
 | 项                            | 取值             | 理由                  |
 | ---------------------------- | -------------- | ------------------- |
-| **框架构建 JDK**                 | 21             | 使用较新的编译器与工具链        |
+| **框架构建 JDK**                 | **17 或更高**     | `release=17` 已锁定产物字节码版本；用哪个 JDK 构建由构建者自定，enforcer `requireJavaVersion [17,)` 兜底 |
 | **`maven.compiler.release`** | **17**         | 产出字节码在 Java 17 上可运行 |
 | **业务方运行时要求**                 | **17+**（建议 21） | 框架不替业务方决定 JDK 版本    |
 
 **为什么编译目标定 17 而不是 21**：这与 2.3 节"框架不指定数据库与驱动"是同一条原则。政务项目中业主环境的 JDK 版本同样不由我方选择，把目标定在 21 会无谓地将仍在 17 上的使用方挡在门外。而这套框架的核心价值不在虚拟线程、模式匹配这类 21 语言特性上——兼容面比这些特性更值钱。若将来确有必须使用 21+ 特性的场景，按第七章流程作为一次大版本变更处理。
 
-**多 JDK 共存的工程约束**：开发机上普遍并存多个 JDK，依赖"每次记得设置 `JAVA_HOME`"对协作者和 AI Agent 都不可靠。因此：
+**构建 JDK 不再钉死具体版本（第八轮修订）**：`maven-toolchains-plugin` 曾被引入以解决"开发机多 JDK 并存、靠手工 `JAVA_HOME` 不可靠"的问题，但实践证明弊大于利：
 
-- 父 POM 引入 `maven-toolchains-plugin`，显式声明本项目所需的 JDK 版本
-- 开发者本地维护 `~/.m2/toolchains.xml` 登记各 JDK 路径，Maven 自行选择，与 `PATH` 上是哪个 `java` 无关
-- CI 侧由 `actions/setup-java` 固定版本
-- `toolchains.xml` 的样例与配置说明作为阶段 0 交付物
+- `release=17` 本身已保证产物在 Java 17 上运行；构建 JDK 只要 ≥ 17（`--release 17` 的编译前提）即可，17 / 21 / 25 产出的字节码一致
+- toolchains 把要求收紧成"必须有一个指定版本、否则先配 `~/.m2/toolchains.xml`"，没配的协作者 / AI 会以 `Cannot find matching toolchain` 直接构建失败——比它要防的坑更劝退
+- 因此 `framework` / 各插件仓 / `codegen` 的 POM 一律**移除 `maven-toolchains-plugin`**，改由 `maven-enforcer-plugin` 的 `requireJavaVersion` → `[17,)` 兜底
+- CI 侧仍由 `actions/setup-java` 固定版本（默认 21），与本地构建者用哪个 JDK 无关
+- **唯一保留 toolchains 的是 `sample-app`**，且刻意钉 JDK **17**：用最低支持版本端到端构建业务样例，验证"业务方 Java 17+ 即可"这条承诺（见 VERSION_BASELINE 发现 ⑥ 及第八轮修订）
 
 ### 2.3 数据库兼容策略（v0.4 重写）
 
@@ -572,9 +573,11 @@ Git worktree 本身是原生能力，真正需要做的工作是让项目工具�
 > **发现 ⑥ 的处置已于 2026-08-20 推翻**（VERSION_BASELINE 第八轮）。
 > 真实原因是"Maven 当时跑在 JDK 11 上"，而 Maven 跑在 17+ 本就是硬要求
 > （`repackage` 加载不了），满足后 `release=17` 必然能编，toolchains 无增量价值；
-> 反而因业务方开发机普遍没有 `~/.m2/toolchains.xml` 而会直接打死构建。
+> 反而因开发机普遍没有 `~/.m2/toolchains.xml` 而以 `Cannot find matching toolchain` 直接打死构建。
 > **archetype 不生成 toolchains 配置**，业务方用哪个 JDK 构建是业务方的自由。
-> 该配置只在 `sample-app` 保留，用途是框架团队"以最低支持版本构建"的兼容性验证。
+> 后续（见 2.2.2「第八轮修订」）进一步把 `framework` / 各插件仓 / `codegen` 的
+> `maven-toolchains-plugin` 也一并移除，统一改用 enforcer 的 `requireJavaVersion [17,)` 兜底。
+> 现在**只有 `sample-app` 保留** toolchains 且刻意钉 JDK 17，用途是框架团队"以最低支持版本构建"的兼容性验证。
 
 **结论：接入不能靠文档，必须靠模板。** 框架需交付一个 Maven archetype：
 
@@ -762,7 +765,7 @@ curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-w
 
 **阶段 0：基础设施骨架**
 
-多仓结构搭建与 `repos.yml`、CI 骨架（**含 5.7/8.4 双版本矩阵**）、`framework-bom`/父 POM（含 `maven-toolchains-plugin` 与 `maven.compiler.release=17`，见 2.2.2）、`toolchains.xml` 样例与说明、Vben fork 与 `packages/` 改造、打通 Maven Central 与 npm 发布链路（GPG 签名、Central Portal 的 `io.github.describeadmin` 命名空间验证）、**组织级** **`CLAUDE.md`** **与编码规范**（含 3.1.1 的包名规范、2.3.1 的 SQL 红线与主键策略）。
+多仓结构搭建与 `repos.yml`、CI 骨架（**含 5.7/8.4 双版本矩阵**）、`framework-bom`/父 POM（`maven.compiler.release=17` + enforcer `requireJavaVersion [17,)`，不再用 `maven-toolchains-plugin`，见 2.2.2「第八轮修订」）、Vben fork 与 `packages/` 改造、打通 Maven Central 与 npm 发布链路（GPG 签名、Central Portal 的 `io.github.describeadmin` 命名空间验证）、**组织级** **`CLAUDE.md`** **与编码规范**（含 3.1.1 的包名规范、2.3.1 的 SQL 红线与主键策略）。
 
 验收标准：空的登录+首页流程可跑通；占位包成功发布到 Maven Central 和 npm；双版本 CI 矩阵可用。
 
@@ -879,7 +882,7 @@ AI 自主测试存在误报/漏报的可能，尤其是纯视觉判断类场景�
 | 事项                           | 结论                                                                                                                  | 核验状态                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | 组织 / 命名空间                    | `describeadmin`；groupId `io.github.describeadmin`，Java 包名 `io.github.describeadmin.*`，npm 组织 `@describeadmin`（已申请） | ✅ 全部落地                     |
-| Java 版本                      | 最低 **17**，构建用 21，`maven.compiler.release=17`                                                                        | ✅ 已核验（SB 3.5.16 基线为 17） |
+| Java 版本                      | 最低 **17**，构建 JDK ≥ 17 即可（不再用 toolchains），`maven.compiler.release=17`                                                | ✅ 已核验（SB 3.5.16 基线为 17） |
 | 主键策略                         | 默认数据库自增（`IdType.AUTO`），可配置切换雪花 ID                                                                                   | 已确认                     |
 | Spring Boot 版本               | **3.5.16**                                                                                                          | ✅ 已核验                   |
 | Spring Security              | 6.5.11                                                                                                              | ✅ 已核验                   |

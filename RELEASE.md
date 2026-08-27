@@ -383,7 +383,7 @@ mvn -f framework/pom.xml clean verify -Prelease -Dgpg.skip=true
 | 制品被拒：`Missing javadoc/sources` | 未启用 `-Prelease` | 发布必须带 `-Prelease` |
 | `tag v0.1.0 与 POM 版本 X 不一致` | 忘了 `versions:set` 或忘了提交 | 对齐后重新打 tag |
 | 版本号已被占用 | Central 版本**不可覆盖** | 只能发下一个版本号 |
-| 构建用了错误的 JDK | 未配置 toolchains | 见 `scripts/toolchains.xml.sample` 与 `develop_plan.md` 2.2.2 |
+| `不支持发行版本 17` / 构建 JDK 太旧 | Maven 跑在 JDK < 17 上 | 把 `JAVA_HOME` 指向 JDK 17+（enforcer 的 `requireJavaVersion` 已会拦下）；见 `develop_plan.md` 2.2.2 |
 
 ---
 

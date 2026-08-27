@@ -2,35 +2,24 @@
 <!--
   Maven Toolchains 样例配置。
 
-  用途：让构建使用指定的 JDK，而不依赖 PATH 上恰好是哪个 java。
-  见 develop_plan.md 2.2.2。
+  ⚠️ 现在【只有 sample-app】需要它。framework 父 POM / 各插件仓 / codegen 已移除
+     maven-toolchains-plugin —— 那些仓只要 Maven 跑在 JDK 17+ 上即可构建，不需要本文件。
+     背景见 develop_plan.md 2.2.2「第八轮修订」与 VERSION_BASELINE 发现 ⑥。
+
+  sample-app 刻意保留 toolchains 并钉 JDK 17：用最低支持版本端到端构建业务样例，
+  验证「业务方 Java 17+ 即可」这条承诺。
 
   安装：把本文件复制到 ~/.m2/toolchains.xml（Windows：%USERPROFILE%\.m2\toolchains.xml），
         并把 <jdkHome> 改成你本机的实际路径。
 
-  验证：mvn -f framework/pom.xml validate
+  验证：mvn -f sample-app/pom.xml validate
         构建日志中 maven-toolchains-plugin 会打印实际选中的 JDK。
-
-  说明：框架构建需要 JDK 21（<version>21</version> 的条目必须存在）。
-        JDK 17 的条目用于验证 release=17 的产物确实能在 17 上运行，非构建必需。
 -->
 <toolchains xmlns="http://maven.apache.org/TOOLCHAINS/1.1.0"
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
             xsi:schemaLocation="http://maven.apache.org/TOOLCHAINS/1.1.0 https://maven.apache.org/xsd/toolchains-1.1.0.xsd">
 
-  <!-- 框架构建用 JDK -->
-  <toolchain>
-    <type>jdk</type>
-    <provides>
-      <version>21</version>
-      <vendor>microsoft</vendor>
-    </provides>
-    <configuration>
-      <jdkHome>C:\Users\Jeffr\.jdks\ms-21.0.12</jdkHome>
-    </configuration>
-  </toolchain>
-
-  <!-- 用于验证 release=17 产物的运行时兼容性 -->
+  <!-- sample-app 的兼容性验证构建用 JDK（最低支持版本） -->
   <toolchain>
     <type>jdk</type>
     <provides>
@@ -39,6 +28,18 @@
     </provides>
     <configuration>
       <jdkHome>C:\Users\Jeffr\.jdks\ms-17.0.20</jdkHome>
+    </configuration>
+  </toolchain>
+
+  <!-- 可选：本机若也想用 21 跑其他构建，留着无妨 -->
+  <toolchain>
+    <type>jdk</type>
+    <provides>
+      <version>21</version>
+      <vendor>microsoft</vendor>
+    </provides>
+    <configuration>
+      <jdkHome>C:\Users\Jeffr\.jdks\ms-21.0.12</jdkHome>
     </configuration>
   </toolchain>
 

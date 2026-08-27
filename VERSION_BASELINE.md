@@ -412,6 +412,13 @@ MyBatis-Plus 自 **3.5.9** 起将 JSqlParser 改为可选依赖，`PaginationInn
 > 因此 `describeadmin-archetype` 生成的工程**不带** toolchains 配置。
 > `sample-app` 保留该配置，用途也随之变窄：它是框架团队"用最低支持版本 JDK 17 构建"
 > 的兼容性验证载体，不是业务方该抄的模板。
+>
+> **2026-08-27 补充**：同一条推理对**框架自身**也成立——`framework` 父 POM 与 `codegen`
+> 当时仍把构建 JDK 用 toolchains 钉在 21，对框架贡献者 / AI 同样是"没配 toolchains.xml
+> 就 `Cannot find matching toolchain`"的劝退项，而 `release=17` 已保证产物正确。
+> 已移除这两处的 `maven-toolchains-plugin`（三个插件仓此前已改），统一改用
+> `maven-enforcer-plugin` 的 `requireJavaVersion` → `[17,)` 兜底。
+> 现在全仓**只有 `sample-app` 还配 toolchains**（钉 17），语义即上文所述的兼容性验证。
 
 ### 第四轮（framework-system-starter：系统管理收回框架）
 

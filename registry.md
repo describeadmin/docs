@@ -233,8 +233,10 @@ default 方法，`framework-system-starter` 的 `DbAuthUserLoader` 已实现）�
    `framework-bom` —— 这正是业务方消费框架的姿势，插件用同一套姿势才能提前暴露
    业务方会遇到的问题；继承 `framework-parent` 反而会把这些问题遮住
 3. 自带的构建配置一条都不能少，它们都是硬约束而非偏好：
-   toolchains + `release=17`、surefire 的 UTF-8、enforcer 的 JDBC 驱动与 Jackson 3 两条。
-   **唯独不要带 `enforce-core-thin`** —— 插件的职责就是引入那些重依赖
+   `release=17`、surefire 的 UTF-8、enforcer 的 `requireJavaVersion [17,)` + JDBC 驱动 + Jackson 3 三条。
+   **不要带 `maven-toolchains-plugin`**（钉死构建 JDK 只会劝退没配 `~/.m2/toolchains.xml` 的人，
+   `requireJavaVersion` 兜底即可，见 `develop_plan.md` 2.2.2「第八轮修订」）；
+   **也不要带 `enforce-core-thin`** —— 插件的职责就是引入那些重依赖
 4. 框架版本写成属性（`<describeadmin.version>`）而不是字面量，CI 的兼容性矩阵靠覆盖它来跑
 5. 在 `repos.yml` 登记，group 为 `ext`；在本文件的表格里登记
 6. CI 加**框架版本矩阵**（准入规范第 5 条）
