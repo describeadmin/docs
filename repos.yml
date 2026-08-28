@@ -70,13 +70,13 @@ repos:
       会同时向两个仓库输出（Java/SQL → <业务>-server，Vue/TS → <业务>-web），
       因此交付形态必须能跨仓工作。
     publishes:
-      # ⚠️ 尚未发布。POM 已配齐 Central 所需的 license/developers/scm/url 与 shade 打包，
-      #    但本仓【没有 release.yml】，发布链路尚未打通（framework 仓已有）。
-      # 主交付形态（planned，9.4.1）：业务方在 <build><plugins> 中声明，
-      # frontendOut 指向同级的 <业务>-web；版本由 framework-bom 仲裁，与框架版本联动。
-      # 选插件而非 java -jar 的理由见 9.4.1——它在 pom.xml 里是可被 AI Agent 发现的。
-      - io.github.describeadmin:describeadmin-codegen-maven-plugin
-      # 辅助形态：可执行 fat jar，随 GitHub Release 分发，供非 Maven 场景与 CI 使用
+      # 唯一交付形态（9.4.1，2026-08-28 定）：可执行 fat jar，随 GitHub Release 分发
+      # （codegen/.github/workflows/release.yml，打 tag v* 触发）。
+      # 【不发 Maven Central】：codegen 绝不进业务方 pom.xml 的 <dependencies>（9.4），
+      # 没有"依赖它"的消费者，发 Central 没有意义。
+      # 曾计划的 describeadmin-codegen-maven-plugin 主形态已放弃——可发现性改由
+      # 业务方工作空间的 CLAUDE.md §6 + workspace 仓的 codegen skill 承担（见 9.4.1）。
+      # jar 的获取/校验/缓存（~/.describeadmin/codegen/<版本>/）也由该 skill 负责（9.4.3）。
       - io.github.describeadmin:codegen
 
   - name: db-compat-checker

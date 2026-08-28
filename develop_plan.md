@@ -644,16 +644,19 @@ npm create @describeadmin/app <项目名>
 
 > **`codegen` 绝不出现在业务方 `pom.xml` 的 `<dependencies>` 中。** 它是命令行工具，不是库。
 
-#### 9.4.1 交付形态
+#### 9.4.1 交付形态：只做可执行 fat jar（2026-08-28 定）
 
-`codegen` 会**同时向两个仓库输出**（后端 Java/SQL → `<业务>-server`，Vue/TS → `<业务>-web`），因此其交付形态需要能跨仓工作：
+`codegen` 会**同时向两个仓库输出**（后端 Java/SQL → `<业务>-server`，Vue/TS → `<业务>-web`），因此其交付形态需要能跨仓工作。
 
-| 形态 | 用途 |
-|---|---|
-| **Maven 插件**（主）`describeadmin-codegen-maven-plugin` | 在 `<业务>-server` 中声明于 `<build><plugins>`，`frontendOut` 指向同级的 `<业务>-web`。版本由 `framework-bom` 仲裁，与框架版本联动 |
-| **可执行 fat jar**（辅） | 随 GitHub Release 分发，供不使用 Maven 的场景与 CI 使用 |
+**唯一交付形态：可执行 fat jar**（`maven-shade-plugin` 产出 `codegen.jar`，内含 SnakeYAML），随 GitHub Release 分发，`java -jar codegen.jar <spec> --out … --frontend-out …` 调用。
 
-选 Maven 插件为主的理由与目标 #2 直接相关：**它在 `pom.xml` 里是可被发现的**——AI Agent 读一遍业务方的 POM 就知道这个项目用什么生成代码、如何调用；而一条需要外部记忆的 `java -jar` 命令不具备这个性质。
+曾计划再做一个 `describeadmin-codegen-maven-plugin` 作为**主**形态（写进 `<业务>-server` 的 `<build><plugins>`，`mvn describeadmin:gen` 调用），理由是"它在 `pom.xml` 里可被 AI Agent 发现，而 `java -jar` 命令需要外部记忆"。**此形态放弃**，理由：
+
+1. **可发现性已由别处解决**。业务方工作空间的 `CLAUDE.md` §6 + `codegen` skill（9.4.3）就是那份"外部记忆"的载体——AI Agent 进工作空间必读 `CLAUDE.md`，等价于读 POM 能发现插件。为可发现性单独维护一个 Maven 插件（Mojo、`plugin.xml`、与 `framework-bom` 的版本联动、跨仓 `frontendOut` 传参）不划算。
+2. **版本节奏冲突**。插件形态要求版本由 `framework-bom` 仲裁、与框架版本联动，这与 9.4 理由 2（生成器是开发期工具，要能独立于框架快速迭代）直接矛盾。fat jar 走自己的版本线，不背这个包袱。
+3. **两条路要维护成一条**。插件本质上也只是包一层 `CodegenCli`，两种形态并存意味着同一套逻辑两个入口、两套集成测试。
+
+代价：`java -jar` 的路径、版本、缓存位置不写在业务方 `pom.xml` 里，必须靠 `codegen` skill 承载（见 9.4.3）。这是接受的取舍。
 
 #### 9.4.2 使用位置
 
@@ -663,10 +666,9 @@ npm create @describeadmin/app <项目名>
 
 #### 9.4.3 fat jar 的获取与缓存（`codegen` skill）
 
-9.4.1 的 Maven 插件形态尚未实现，当前唯一可用形态是随 GitHub Release 分发的 fat jar。
-但 `init-workspace.sh` / archetype / create-app **都不会**下载它——codegen 不发 Central、不进
-`pom.xml`（9.4 的硬规定），所以「怎么把 jar 弄到手」这件事必须在使用侧解决，否则 9.4.2 的
-「跑生成」这一步在全新工作空间里是断的。
+fat jar 是唯一交付形态（9.4.1），但 `init-workspace.sh` / archetype / create-app **都不会**
+下载它——codegen 不发 Central、不进 `pom.xml`（9.4 的硬规定），所以「怎么把 jar 弄到手」
+这件事必须在使用侧解决，否则 9.4.2 的「跑生成」这一步在全新工作空间里是断的。
 
 `workspace` 仓的 `codegen` skill 承担这件事，约定：
 
@@ -698,7 +700,7 @@ npm create @describeadmin/app <项目名>
 
 # 4. 起服务，用初始账号登录，得到一个带完整 RBAC 的后台
 
-# 5. 加业务模块：写 spec → mvn describeadmin:gen → 登记 SQL → 重启
+# 5. 加业务模块：写 spec → java -jar codegen.jar（codegen skill 代取） → 登记 SQL → 重启
 ```
 
 **验收标准**：一个此前没接触过本框架的开发者，照上述步骤能在 30 分钟内得到一个可登录、带 RBAC、含一个自建业务模块的后台，且全程不需要阅读 `VERSION_BASELINE.md`。
@@ -764,7 +766,7 @@ curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-w
 | ~~`describeadmin-archetype`~~ **已实现**（2026-08-20，待发布到 Central） | 阶段 0（与发布链路同期，它本身就要发布到 Central） |
 | `@describeadmin/system-ui`（前端系统管理收包） | 阶段 1（与 `framework-system-starter` 对称，宜同期完成） |
 | `npm create @describeadmin/app` | 阶段 1 |
-| `describeadmin-codegen-maven-plugin` | 阶段 1（codegen 本体已有，此处只是补交付形态） |
+| ~~`describeadmin-codegen-maven-plugin`~~ **放弃**（2026-08-28，见 9.4.1）——codegen 只做 fat jar，获取由 `codegen` skill 承担 | — |
 | `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test`/`describe`/`codegen` 四个 skill，9.5.1 / 9.4.3） | 阶段 1（依赖 archetype、create-app 已存在） |
 
 ***
@@ -869,6 +871,7 @@ AI 自主测试存在误报/漏报的可能，尤其是纯视觉判断类场景�
 2. **发现并记录前端分层的不对称**：系统管理的后端已收回 `framework-system-starter`，前端页面（实测 1,376 行）却仍留在应用层，导致框架修复无法到达业务方。决定新增 `@describeadmin/system-ui`（9.3.1）。
 3. **补齐 4.1 未回答的问题**——业务方的应用外壳从何而来。决定由 `npm create @describeadmin/app` 生成，并如实记录"外壳不会自动升级"这一代价（9.3.2）。
 4. **明确 codegen 的定位与交付形态**：独立成仓的依据是依赖方向；交付形态为 Maven 插件（主）+ fat jar（辅）；并规定其绝不作为业务方运行时依赖（9.4）。
+   &nbsp;&nbsp;&nbsp;&nbsp;↳ **2026-08-28 修订**：放弃 Maven 插件形态，codegen 只做可执行 fat jar，jar 的获取/校验/缓存由 `workspace` 仓的 `codegen` skill 承担（见 9.4.1、9.4.3）。
 5. **接入不靠文档靠模板**：三个已实测的接入坑（发现 ②⑥⑧）改由 `describeadmin-archetype` 固化（9.2.2）。
 6. **4.3 前端版本表按 Vben 5.7.0 实际 catalog 修正**——该修正已在正文标注为 v0.5，此前未在本附录登记，此处补记。
 

@@ -6,7 +6,7 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-28（`workspace` 仓新增 `codegen` skill：管生成器 jar 的下载/校验/缓存 + spec 要点 + 生成后隐坑，见下方新增章节）**
+**最后更新：2026-08-28（`workspace` 仓新增 `codegen` skill：管生成器 jar 的下载/校验/缓存 + spec 要点 + 生成后隐坑；并定案放弃 codegen 的 Maven 插件形态、只做 fat jar，见下方新增章节）**
 
 ***
 
@@ -39,12 +39,15 @@
   头部注释树 + 结尾提示同步「四个 skill」。
 - 改 `workspace/README.md`：结构树加 `codegen/`；维护须知加一条「codegen skill 无配套脚本」的说明。
 - 改本文件；`develop_plan.md` §9.4 加「9.4.3 fat jar 的获取与缓存」。
+- **顺带定案（用户拍板）**：放弃 codegen 的 Maven 插件形态，只做可执行 fat jar。改
+  `develop_plan.md` §9.4.1（重写「交付形态」+ 三条放弃理由）、§9.4.3 开头、§9.5 步骤 5
+  （`mvn describeadmin:gen` → `java -jar`）、§9.7 路线图表（`describeadmin-codegen-maven-plugin`
+  划掉）、附录 A v0.5 第 4 条加 2026-08-28 修订注；`QUICKSTART.md` 删掉「还给不了你的」表里
+  「codegen 的 Maven 插件形态」那行（不再是缺口，是定型）。
 
 **未做 / 已知**：
 - `codegen` 的「适配哪个框架版本」仍无正式声明（`registry.md` 没有 codegen 兼容表）。当前策略是
   「默认最新 + 编译兜底 + 不行就钉 `CODEGEN_VERSION`」。等框架有多个大版本在用时应补一张对照表。
-- `develop_plan.md` §9.4.1 仍写「Maven 插件（主）+ fat jar（辅）」，而现实是 fat-jar-only（插件形态
-  未实现，见 QUICKSTART §1 表）。本次未动这个「主/辅」结论，只在 §9.4.3 记录 fat jar 路径的获取机制。
 - SKILL.md 里的 `.sha256` 资产名、Release tag 形态（`0.1.1` vs `v0.1.1`）按「从 `releases/latest`
   响应里读 `browser_download_url` / `tag_name`」处理，未硬编码；真实 Release 上线后需实跑一次确认。
 - 改动未提交、未 push。

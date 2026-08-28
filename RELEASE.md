@@ -245,7 +245,8 @@ curl -s https://repo1.maven.org/maven2/io/github/describeadmin/framework-bom/mav
 **不发布到 Maven Central。** 理由不是省事：`develop_plan.md` 9.4 定了
 `codegen` 绝不出现在业务方 `pom.xml` 的 `<dependencies>` 中——它是命令行工具，
 产物一旦生成即脱离生成器。既然没有「依赖它」的消费者，发到 Central 没有意义。
-Central 只对未来的 `describeadmin-codegen-maven-plugin` 形态有价值。
+（曾设想的 `describeadmin-codegen-maven-plugin` 形态会需要 Central，但该形态已于
+2026-08-28 放弃，见 `develop_plan.md` §9.4.1。codegen 只做 fat jar，只发 GitHub Release。）
 
 ```bash
 cd codegen
