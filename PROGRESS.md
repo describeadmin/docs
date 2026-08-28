@@ -6,7 +6,7 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-28（`codegen` 实现 flat 包布局：`--layout` / `layout:` / `CODEGEN_LAYOUT` 三来源，默认 nested，见下方新增章节）**
+**最后更新：2026-08-28（`codegen` 实现 flat 包布局：`--layout` / `layout:` / `CODEGEN_LAYOUT` 三来源，默认 nested；并用它把 `sample-app` 的 `project` 模块重新生成为 flat，顺带修出 `permPrefix()` 该用 `public` 的既有 bug，见下方新增章节）**
 
 ***
 
@@ -37,8 +37,25 @@
 **坑（已写进文档）**：生成器从不删文件，中途从 nested 切 flat 会在旧 `<module>/` 子包留孤儿，
 需手工清——布局应开工即定，`workspace` 的 env 默认值负责这件事。
 
+**用 flat 重新生成 `sample-app` 的 `project` 模块（验证端到端）**：
+
+- `sample-app/codegen-specs/project.yaml` 加 `layout: flat`，重新生成后四件套从
+  `io.github.describeadmin.sample.project.<layer>` 移到 `io.github.describeadmin.sample.<layer>`；
+  手工删掉 nested 的 `project/` 孤儿包；`FrameworkRuntimeIT` 的两处 `Project*` import 跟随。
+  DDL / 菜单 SQL / 权限点 / test-spec 逐字节不变。
+- **顺带修出 codegen 一个既有 bug**：`JavaGenerator` 生成的 `permPrefix()` 覆写写的是
+  `protected`，而 `BaseController.permPrefix()` 自 0.2.0 起是 `public`（阶段 E 放宽，供
+  `OperLogAspect` 跨包读取），`protected` 覆写收窄可见性 → 编译不过。此前 nested 的
+  `ProjectController` 是**手工**改成 `public` 掩盖了偏差，一直没重新生成才没暴露。
+  已改 `JavaGenerator` 生成 `public` + `GeneratorTest` 加断言锁死。
+- 验证：`@MapperScan("io.github.describeadmin.sample.**.mapper")` 的 `**` 能匹配零段的
+  `io.github.describeadmin.sample.mapper`；`FrameworkRuntimeIT` 23/23、
+  `PermissionEnforcementIT` 6/6 全绿（Testcontainers MySQL 5.7）。
+
 **未做**：`workspace` 仓 `codegen` skill 的 SKILL.md 尚未加「`CODEGEN_LAYOUT` 可设项目级默认布局」
-一节（该仓不在本次工作目录内）。改动已提交 `codegen`（`ef1cb2b`）、`docs`（`5c3a204`）各自 `0.2.0-dev`，未 push。
+一节（该仓不在本次工作目录内）。改动已提交各自 `0.2.0-dev`、未 push：`codegen`
+（`ef1cb2b` flat + `68619ca` permPrefix 修复 + `5bfe437` CHANGELOG）、`sample-app`
+（`95018d5` project 改 flat）、`docs`（`5c3a204` + 本轮）。
 
 ***
 
