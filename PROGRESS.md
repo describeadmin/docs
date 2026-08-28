@@ -6,7 +6,48 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-28（`workspace` 仓新增 `describe` skill：需求 → 独立双 worktree → 计划确认 → 自主开发 → 测试 → 待合并/集成，见下方新增章节）**
+**最后更新：2026-08-28（`workspace` 仓新增 `codegen` skill：管生成器 jar 的下载/校验/缓存 + spec 要点 + 生成后隐坑，见下方新增章节）**
+
+***
+
+## 2026-08-28 追加：`workspace` 仓新增 `codegen` skill（生成器 jar 的获取与使用）
+
+**背景问题（用户走查发现）**：`init-workspace.sh` / `archetype:generate` / `npm create @describeadmin/app`
+都不下载 `codegen`，而 `describe` skill 的 A6 又直接说「优先走 codegen」，全流程里**没有任何一步负责把
+`codegen.jar` 弄到手**——隐含假设「执行者自己会去 GitHub Release 页下载」。codegen 刻意不发 Maven Central、
+不进 `pom.xml`（`develop_plan.md` §9.4），所以这个缺口只能在使用侧补。
+
+**讨论收敛过程**（几轮否掉的方案都记下，避免重提）：
+- 先考虑塞进 `describe/SKILL.md` A6 → 否：不是每次开发都走 `describe`，用户可能直接让 AI 加模块。
+- 再考虑只写进 `workspace/CLAUDE.md` §6（每次会话都加载）+ 一个 `codegen.sh` 辅助脚本 → 否：
+  用户认为「下载+校验+缓存」这套步骤 AI 自己就能做，不值得为它单开脚本；但散在 CLAUDE.md 一节里又不够显眼。
+- **最终：单独做成 `codegen` skill，无配套 `.sh`**。步骤写在 SKILL.md 里由 AI 执行，`describe` A6 与
+  `CLAUDE.md` §6 都改为指向它。
+
+**交付（`workspace` 仓，未 push）**：
+
+- 新增 `.claude/skills/codegen/SKILL.md`：①备 jar——版本取 `workspace.env` 的 `CODEGEN_VERSION`，
+  没有则查 GitHub `releases/latest`；缓存 `~/.describeadmin/codegen/<版本>/codegen.jar`（**per-user、
+  跨项目/worktree 共用，刻意不放工作空间**，`describe.sh clean` 不动它），`.sha256` 比对通过才用；
+  下不通又无缓存则停下让用户手动放。②spec 要点：字段 `type` 白名单 + 常见校验拦截。
+  ③`java -jar ... --out <BACKEND_DIR> --frontend-out <FRONTEND_DIR>`，默认不覆盖、`--force`/`--dry-run`。
+  ④生成后三个隐坑：SQL 登记进 `spring.sql.init`、下划线模块名导致权限点 403、别自写 `list` 重载。
+  ⑤编译不过＝codegen 版本比框架新，钉早一点的 `CODEGEN_VERSION`。⑥被 `describe` 调用时的路径差异。
+- 改 `describe/SKILL.md` A6：「写 spec → 跑生成」→「调 `codegen` skill」。
+- 改 `workspace/CLAUDE.md`：§4「三个 skill」→「四个」+ 加 `codegen` 条目；§6 改为指向 skill。
+- 改 `init-workspace.sh`：`workspace.env` heredoc 加注释掉的 `# CODEGEN_VERSION=0.1.1`；
+  头部注释树 + 结尾提示同步「四个 skill」。
+- 改 `workspace/README.md`：结构树加 `codegen/`；维护须知加一条「codegen skill 无配套脚本」的说明。
+- 改本文件；`develop_plan.md` §9.4 加「9.4.3 fat jar 的获取与缓存」。
+
+**未做 / 已知**：
+- `codegen` 的「适配哪个框架版本」仍无正式声明（`registry.md` 没有 codegen 兼容表）。当前策略是
+  「默认最新 + 编译兜底 + 不行就钉 `CODEGEN_VERSION`」。等框架有多个大版本在用时应补一张对照表。
+- `develop_plan.md` §9.4.1 仍写「Maven 插件（主）+ fat jar（辅）」，而现实是 fat-jar-only（插件形态
+  未实现，见 QUICKSTART §1 表）。本次未动这个「主/辅」结论，只在 §9.4.3 记录 fat jar 路径的获取机制。
+- SKILL.md 里的 `.sha256` 资产名、Release tag 形态（`0.1.1` vs `v0.1.1`）按「从 `releases/latest`
+  响应里读 `browser_download_url` / `tag_name`」处理，未硬编码；真实 Release 上线后需实跑一次确认。
+- 改动未提交、未 push。
 
 ***
 

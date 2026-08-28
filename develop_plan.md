@@ -661,6 +661,29 @@ npm create @describeadmin/app <项目名>
 
 写 `codegen-specs/<模块>.yaml` → 跑生成 → 把新增的 `schema-*.sql` / `menu-*.sql` 登记进 `spring.sql.init` → 重启 → 页面出现在侧边栏 → 跑生成出的结构化验收用例。
 
+#### 9.4.3 fat jar 的获取与缓存（`codegen` skill）
+
+9.4.1 的 Maven 插件形态尚未实现，当前唯一可用形态是随 GitHub Release 分发的 fat jar。
+但 `init-workspace.sh` / archetype / create-app **都不会**下载它——codegen 不发 Central、不进
+`pom.xml`（9.4 的硬规定），所以「怎么把 jar 弄到手」这件事必须在使用侧解决，否则 9.4.2 的
+「跑生成」这一步在全新工作空间里是断的。
+
+`workspace` 仓的 `codegen` skill 承担这件事，约定：
+
+- **版本**：`.claude/workspace.env` 的 `CODEGEN_VERSION` 优先；留空则取 GitHub `releases/latest`。
+  codegen 走独立版本线，与框架版本号不对齐是正常的（9.4 理由 2）。
+- **缓存位置**：`~/.describeadmin/codegen/<版本>/codegen.jar`，**per-user、跨项目与
+  `git worktree` 共用**，不放进工作空间——describe 的每个 worktree 只拷 `.claude/`，
+  per-user 缓存能被所有 worktree 复用，也不被 `describe.sh clean` 误删，每台机器通常只下一次。
+- **完整性**：随 jar 一起取 `.sha256`，比对通过才落缓存。
+- **兼容性判据**：目前没有「codegen 版本 ↔ 框架版本」的正式对照表（不同于 `registry.md`
+  对插件的最低框架版本要求）。判据是**编译兜底**——生成的薄代码继承框架基类，编不过就说明
+  这个 codegen 版本对应的基类契约比当前框架新，钉一个更早的 `CODEGEN_VERSION` 重跑。
+  等框架出现多个并存的大版本时，应在 `registry.md` 补一张对照表把判据前移到「事前」。
+- **形态**：刻意不做配套 shell 脚本。「下载 + 校验 + 缓存 + `java -jar`」写进 skill 的
+  SKILL.md 由 AI 执行即可，不构成需要脚本封装的状态机（对比 `dev-env` / `describe` 的
+  容器/worktree 编排）。
+
 ### 9.5 目标状态下的完整接入流程
 
 ```bash
@@ -711,6 +734,10 @@ curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-w
   同样不写运行时——机械活（增删 worktree、合并回 base）在薄脚本 `describe.sh` 里，
   判断活在 `SKILL.md`。`init-workspace.sh` 相应改为对两个子项目 `git init` + 首次提交
   （archetype / create-app 都不建仓，而 worktree 能力以此为前提）
+- `.claude/skills/codegen`：写 YAML spec 生成一个业务模块的薄代码（9.4.2 的循环）。
+  它额外承担 9.4.3 说的「把生成器 fat jar 从 GitHub Release 取下来 + 校验 + 缓存到
+  `~/.describeadmin/codegen/<版本>/`」——这一步此前无人负责，`describe` 的自主实现阶段
+  会调用它。无配套脚本，步骤写在 `SKILL.md` 里
 
 `workspace` 仓库由框架团队维护、随 `repos.yml` 被 `clone-all.sh` 拉取，但它的**产出**
 （`CLAUDE.md`/`.claude/skills/`）走向的是业务方工作空间，不是框架团队自己用——这是它与
@@ -738,7 +765,7 @@ curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-w
 | `@describeadmin/system-ui`（前端系统管理收包） | 阶段 1（与 `framework-system-starter` 对称，宜同期完成） |
 | `npm create @describeadmin/app` | 阶段 1 |
 | `describeadmin-codegen-maven-plugin` | 阶段 1（codegen 本体已有，此处只是补交付形态） |
-| `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test`/`describe` 三个 skill，9.5.1） | 阶段 1（依赖 archetype、create-app 已存在） |
+| `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test`/`describe`/`codegen` 四个 skill，9.5.1 / 9.4.3） | 阶段 1（依赖 archetype、create-app 已存在） |
 
 ***
 
