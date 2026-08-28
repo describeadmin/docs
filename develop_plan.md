@@ -704,6 +704,13 @@ curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-w
 - `.claude/skills/visual-test`：AI Agent 直接用 chrome-devtools MCP 驱动浏览器 +
   DB 查询做结构化断言，不写额外的测试运行时（落地目标 #5，设计取舍见第五章的
   "不写解释器"原则——这条原则最初就是在给这个 skill 定型时确认下来的）
+- `.claude/skills/describe`：把「需求 + 参考材料 → 隔离的双 `git worktree` 沙箱 →
+  出计划待确认 → 自主实现 → 跑完整测试 → 动了前端就跑可视化测试 → 待合并报告」
+  编排成一条剧本，再加一个「用户验证无误后合并回两个子仓 + 清理 worktree」的入口
+  （把目标 #2「面向 AI 编程」、#4、#5 从「各有零件」变成「有端到端流程」）。
+  同样不写运行时——机械活（增删 worktree、合并回 base）在薄脚本 `describe.sh` 里，
+  判断活在 `SKILL.md`。`init-workspace.sh` 相应改为对两个子项目 `git init` + 首次提交
+  （archetype / create-app 都不建仓，而 worktree 能力以此为前提）
 
 `workspace` 仓库由框架团队维护、随 `repos.yml` 被 `clone-all.sh` 拉取，但它的**产出**
 （`CLAUDE.md`/`.claude/skills/`）走向的是业务方工作空间，不是框架团队自己用——这是它与
@@ -731,7 +738,7 @@ curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-w
 | `@describeadmin/system-ui`（前端系统管理收包） | 阶段 1（与 `framework-system-starter` 对称，宜同期完成） |
 | `npm create @describeadmin/app` | 阶段 1 |
 | `describeadmin-codegen-maven-plugin` | 阶段 1（codegen 本体已有，此处只是补交付形态） |
-| `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test` 两个 skill，9.5.1） | 阶段 1（依赖 archetype、create-app 已存在） |
+| `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test`/`describe` 三个 skill，9.5.1） | 阶段 1（依赖 archetype、create-app 已存在） |
 
 ***
 

@@ -6,7 +6,55 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-27（构建简化：移除 framework 父 POM 与 codegen 的 `maven-toolchains-plugin`，改用 enforcer `requireJavaVersion [17,)`，见下方新增章节）**
+**最后更新：2026-08-28（`workspace` 仓新增 `describe` skill：需求 → 独立双 worktree → 计划确认 → 自主开发 → 测试 → 待合并/集成，见下方新增章节）**
+
+***
+
+## 2026-08-28 追加：`workspace` 仓新增 `describe` skill（端到端开发编排）
+
+用户要一条「完全独立自主的开发 + 集成流程」：用户给需求 + 参考材料（PRD/参考代码/图/文档），
+AI 先建 worktree → 出开发计划（可二次确认）→ 确认后自主开发 → 跑完整测试 → 含前端则跑可视化测试 →
+停在「待合并」→ 用户验证无误后一句话触发合并 + 清理。判定可行——三个能力已就位，`describe` 是编排剧本不是新运行时。
+
+**探索发现的硬约束**：`mvn archetype:generate` / `npm create @describeadmin/app` / `init-workspace.sh`
+三者**都不 `git init`** 子项目，而 `workspace/CLAUDE.md` 已声称「两个项目各自是独立仓库」、
+`git worktree` 也以此为前提 → 必须补这个缺口。
+
+**交付（`workspace` 仓 + 本文件/`develop_plan.md` 在 `docs` 仓，已 commit 到各自 `0.2.0-dev`，未 push）**：
+
+- 新增 `.claude/skills/describe/SKILL.md`：三入口剧本（A 新需求开发 / B 集成 / C 放弃）。
+  唯一人工闸是「计划确认」，确认后一路自主跑到「待合并 + REPORT.md」。不 push、不 merge。
+- 新增 `.claude/skills/describe/describe.sh`：只做机械活。子命令
+  `new <slug> [--base <branch>] [--init-repos]` / `list` / `land <slug>` / `clean <slug> [--force]`。
+  `new` == 「`init-workspace.sh` 的 worktree 版」：对两个子仓各 `git worktree add` 到
+  `<workspace>/.worktrees/<slug>/`，拷 `.claude/` + `CLAUDE.md`，写 `.describe/meta.env`。
+  base 默认按仓探测 `origin/HEAD` → 本地 `main` → `master` → 当前分支。
+  `land` 两仓各自 `checkout <base>` + `merge --no-ff`，冲突即停可重跑，成功则自动 `clean`。
+- 改 `init-workspace.sh`：生成后端/前端后，对两个子项目各 `git init -b main` + 首次提交（已是仓库则跳过）。
+- 改 `.claude/skills/dev-env/dev.sh`：(1) 新增 `dev wait [back|front|all] [--timeout N]`（阻塞到端口可连接 +
+  后端盯日志的启动完成/失败行），给 `describe` / `visual-test` 用，不再 `sleep` 猜时间；(2) MySQL 镜像从写死
+  `mysql:5.7` 改为读 `DEV_MYSQL_IMAGE`（`workspace.env` 或环境变量），默认仍 `mysql:5.7`——业务方线上是 8.x
+  可自行对齐；只在首次建共享容器时生效（容器项目级共享）。均为纯新增/替换，不动既有子命令语义。
+- 改 `.claude/skills/visual-test/SKILL.md`：加「被 `describe` 调用时」一节。
+- 改 `init-workspace.sh`：生成的 `workspace.env` 带一行注释掉的 `# DEV_MYSQL_IMAGE=mysql:8.0` 提示。
+- 改 `workspace/CLAUDE.md` §0/§4、`workspace/README.md`（结构树 + 维护须知）、本文件、`develop_plan.md` §9.5.1 + §9.7。
+
+**复审修正（用户 review 时抓出来的）**：
+- `describe/SKILL.md` 原先引用「框架团队那份 `CLAUDE.md`」的 §3/§3.6/§4.9——业务方工作空间里只有
+  `init-workspace.sh` 生成的**业务版** `CLAUDE.md`（无这些章节），三处死链已改为自包含表述。
+- 其中「数据库改动」一条原写「SQL 落在 MySQL 5.7 安全子集」——那是**框架**的兼容负担（框架 DDL 要能跑在
+  业主可能用的 5.7 上），不是业务方的。业务方的库版本自己定，已删除该约束，改为「登记进 `spring.sql.init` +
+  语法按自己的库版本写」。
+
+**已验证**：`describe.sh` / 改动后的 `dev.sh` `bash -n` 通过；在 scratch 双 git 仓里实跑过
+`new` / `list` / `land`（顺利 + 冲突路径）/ `clean`（含已跟踪改动守卫 + `--force`）/ 嵌套 `new` 守卫 /
+`--init-repos` / `dev wait` 快速超时——全过。
+
+**未做 / 待确认**：
+- 尚未在 `sample-app` + `sample-frontend` 上跑**真实**端到端（`mvn test` + `pnpm build` + chrome-devtools
+  可视化那一整条，计划文件 `skill-skill-velvety-graham.md` 的「验证方式」7 步）。
+- `dev wait` 的 Windows 端口探测分支未在 Windows 上实测。
+- 改动已提交到 `workspace` / `docs` 两仓的 `0.2.0-dev`，未 push。
 
 ***
 
