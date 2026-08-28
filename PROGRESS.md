@@ -38,7 +38,7 @@
 需手工清——布局应开工即定，`workspace` 的 env 默认值负责这件事。
 
 **未做**：`workspace` 仓 `codegen` skill 的 SKILL.md 尚未加「`CODEGEN_LAYOUT` 可设项目级默认布局」
-一节（该仓不在本次工作目录内）；改动未提交。
+一节（该仓不在本次工作目录内）。改动已提交 `codegen`（`ef1cb2b`）、`docs`（`5c3a204`）各自 `0.2.0-dev`，未 push。
 
 ***
 
