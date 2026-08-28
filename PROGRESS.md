@@ -6,7 +6,39 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-28（`workspace` 仓新增 `codegen` skill：管生成器 jar 的下载/校验/缓存；两条定案——放弃 codegen 的 Maven 插件形态只做 fat jar、codegen 版本号与 framework 保持一致，见下方新增章节）**
+**最后更新：2026-08-28（`codegen` 实现 flat 包布局：`--layout` / `layout:` / `CODEGEN_LAYOUT` 三来源，默认 nested，见下方新增章节）**
+
+***
+
+## 2026-08-28 追加：`codegen` 实现 flat 包布局
+
+此前 memory 记的「已一致未实现」项。生成器只生成 `<basePackage>.<module>.<layer>`（nested），
+现新增可选 `flat` 布局（`<basePackage>.<layer>`），面向不分模块层级的小工程。
+
+**交付（`codegen` 仓 `0.2.0-dev`，未提交）**：
+
+- 新增 `model/Layout` 枚举（`NESTED` / `FLAT`，`of()` 大小写不敏感解析）。
+- `ModuleSpec` 加两个 record 分量：`layout` + `layoutOrigin`（后者仅供生成提示行）；
+  `packageOf()` 按 `layout` 分派——**这是唯一的行为改动点**，`package` 声明与跨层 import
+  全从它派生，自动跟随；前端 / SQL / `test-specs` / `permPrefix` / `@RequestMapping` 不受影响。
+- `SpecLoader`：新增 `load(Path, layoutOverride)` 与 `parse(raw, source, layoutOverride)` 重载
+  （旧签名保留、委托传 `null`，测试桥不动）；新增 `resolveLayout(cli, spec, env, errors)` +
+  `LayoutChoice` record。优先级 `--layout` > spec `layout:` 键 > `CODEGEN_LAYOUT` 环境变量 >
+  默认 `nested`；非法取值任何一层都进 `errors` 并点明来源，随其它校验一起 fail fast。
+- `CodegenCli`：加 `--layout` 参数、透传给 `SpecLoader.load`；非默认布局时头部多打一行
+  `布局: flat（来自 …）`；`printUsage` 与类 javadoc 同步。
+- 测试 +8（`SpecLoaderTest` 新增 `@Nested PackageLayout` 6 例、`GeneratorTest` +2）：
+  默认 nested、spec `layout: flat`、CLI 压过 spec、非法值 fail fast+点源、
+  四来源优先级（含空白环境变量视作未设）、非法环境变量、flat 下包名去模块段且 import/REST 路径不变。
+  **`mvn test` 53/53 全绿**（原 45）。手测 CLI dry-run 四路径（nested / --layout / env / 非法值）符合预期。
+- 文档：`codegen/README.md`（用法表 + 产出表 + 新增「包布局」节）、`codegen/CHANGELOG.md`
+  未发布段 New Features、`develop_plan.md` 新增 §9.4.4。
+
+**坑（已写进文档）**：生成器从不删文件，中途从 nested 切 flat 会在旧 `<module>/` 子包留孤儿，
+需手工清——布局应开工即定，`workspace` 的 env 默认值负责这件事。
+
+**未做**：`workspace` 仓 `codegen` skill 的 SKILL.md 尚未加「`CODEGEN_LAYOUT` 可设项目级默认布局」
+一节（该仓不在本次工作目录内）；改动未提交。
 
 ***
 

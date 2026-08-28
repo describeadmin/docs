@@ -689,6 +689,22 @@ fat jar 是唯一交付形态（9.4.1），但 `init-workspace.sh` / archetype /
   SKILL.md 由 AI 执行即可，不构成需要脚本封装的状态机（对比 `dev-env` / `describe` 的
   容器/worktree 编排）。
 
+#### 9.4.4 包布局：nested（默认）与 flat（2026-08-28 定）
+
+生成的后端 Java 文件默认落在 `<basePackage>.<module>.<layer>`（`nested`），按模块隔离。
+只有少量模块、不想要模块层级的小工程可切到 `flat`——`<basePackage>.<layer>`。
+
+- **只影响后端 Java 包与文件落点**。前端目录、`schema-*.sql` / `menu-*.sql`、
+  `test-specs/*.yaml`、`permPrefix()`、`@RequestMapping` 一律以模块名 / 表名为准。
+  实现上只有一处开关：`ModuleSpec.packageOf()`；`package` 声明与跨层 import 全从它派生。
+- **取值优先级**（命中即用）：`--layout <nested|flat>` 命令行参数 → spec 顶层 `layout:` 键
+  → `CODEGEN_LAYOUT` 环境变量（`workspace` 仓可据此设项目级默认，`codegen` skill 不加逻辑、
+  直接透传环境）→ 内置默认 `nested`。任何一层给了非法取值都 fail fast 并点明来源。
+- **配套提示**：切到非默认布局时，生成输出多打一行 `布局: flat（来自 …）`，
+  避免 `CODEGEN_LAYOUT` 隔空生效时难以排查。
+- **已知坑**：生成器从不删文件，中途从 `nested` 切 `flat` 会在旧 `<module>/` 子包下留孤儿，
+  需手工清理——所以布局应开工即定，`workspace` 的 env 默认值负责这件事。
+
 ### 9.5 目标状态下的完整接入流程
 
 ```bash
