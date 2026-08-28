@@ -256,11 +256,15 @@ pnpm dev            # http://localhost:5777
 ### 6.2 跑生成器
 
 从 [codegen 的 Release 页](https://github.com/describeadmin/codegen/releases)
-下载 `codegen.jar`：
+下载 `codegen.jar`——**取与你 `pom.xml` 里 `<describeadmin.version>` 同号的那个**
+（codegen 与框架同版本发布，生成的薄代码对应同号框架的基类契约）：
 
 ```bash
 java -jar codegen.jar codegen-specs/order.yaml --out .
 ```
+
+> 用 `workspace` 工作空间的话不用手动下——`codegen` skill 会按框架版本自动取、
+> 校验、缓存到 `~/.describeadmin/codegen/<版本>/`。
 
 一次产出两侧的东西：
 

@@ -637,8 +637,10 @@ npm create @describeadmin/app <项目名>
 `codegen` 独立成仓（见 3.1.1 与 `repos.yml`），依据是**依赖方向**：它只产出源码文本，运行时不需要任何框架类，其 POM 除 SnakeYAML 外无其他依赖。三条理由：
 
 1. **不污染业务方依赖树**——若并入 `framework`，业务方为跑一次生成器要拖进整个框架依赖树
-2. **版本节奏不同**——生成器是开发期工具，可以快速迭代；框架是运行时制品，受 SemVer 兼容承诺约束。两者绑定会互相拖累
+2. **构建与发布链路独立**——它不进 Maven Central、只发 GitHub Release（9.4.1），CI 与发版流程和 `framework` 完全不同，并入只会互相牵制
 3. **生命周期不同**——产物一旦生成即脱离生成器，业务方运行时完全不需要它
+
+> **独立成仓 ≠ 版本号独立。** `codegen` 的版本号**与 `framework` 保持一致**：生成的薄代码继承框架基类，「这份生成器产出的代码能不能在这个框架版本上编过」这件事必须成对理解。版本对齐还让「按框架版本取对应 `codegen`」变成一次查表就能确定的事（9.4.3），不必靠试错。
 
 由此得到一条硬规定：
 
@@ -650,13 +652,12 @@ npm create @describeadmin/app <项目名>
 
 **唯一交付形态：可执行 fat jar**（`maven-shade-plugin` 产出 `codegen.jar`，内含 SnakeYAML），随 GitHub Release 分发，`java -jar codegen.jar <spec> --out … --frontend-out …` 调用。
 
-曾计划再做一个 `describeadmin-codegen-maven-plugin` 作为**主**形态（写进 `<业务>-server` 的 `<build><plugins>`，`mvn describeadmin:gen` 调用），理由是"它在 `pom.xml` 里可被 AI Agent 发现，而 `java -jar` 命令需要外部记忆"。**此形态放弃**，理由：
+曾计划再做一个 `describeadmin-codegen-maven-plugin` 作为**主**形态（写进 `<业务>-server` 的 `<build><plugins>`，`mvn describeadmin:gen` 调用），唯一理由是"它在 `pom.xml` 里可被 AI Agent 发现，而 `java -jar` 命令需要外部记忆"。**此形态放弃**，理由：
 
-1. **可发现性已由别处解决**。业务方工作空间的 `CLAUDE.md` §6 + `codegen` skill（9.4.3）就是那份"外部记忆"的载体——AI Agent 进工作空间必读 `CLAUDE.md`，等价于读 POM 能发现插件。为可发现性单独维护一个 Maven 插件（Mojo、`plugin.xml`、与 `framework-bom` 的版本联动、跨仓 `frontendOut` 传参）不划算。
-2. **版本节奏冲突**。插件形态要求版本由 `framework-bom` 仲裁、与框架版本联动，这与 9.4 理由 2（生成器是开发期工具，要能独立于框架快速迭代）直接矛盾。fat jar 走自己的版本线，不背这个包袱。
-3. **两条路要维护成一条**。插件本质上也只是包一层 `CodegenCli`，两种形态并存意味着同一套逻辑两个入口、两套集成测试。
+1. **可发现性已由别处解决**。业务方工作空间的 `CLAUDE.md` §6 + `codegen` skill（9.4.3）就是那份"外部记忆"的载体——AI Agent 进工作空间必读 `CLAUDE.md`，等价于读 POM 能发现插件。插件形态存在的唯一动机就此消失。
+2. **维护面不对称**。插件要额外维护 Mojo、`plugin.xml`、生命周期绑定、跨仓 `frontendOut` 传参，而它包的还是同一个 `CodegenCli`。fat jar 已经有三年实际使用，插件三年没落地——为一个开发期工具养两个入口、两套集成测试不划算。
 
-代价：`java -jar` 的路径、版本、缓存位置不写在业务方 `pom.xml` 里，必须靠 `codegen` skill 承载（见 9.4.3）。这是接受的取舍。
+代价：`java -jar` 的路径、缓存位置不写在业务方 `pom.xml` 里，必须靠 `codegen` skill 承载（见 9.4.3）。版本不是代价——它与框架版本一致，由业务工程的 `<describeadmin.version>` 直接决定（9.4.3）。
 
 #### 9.4.2 使用位置
 
@@ -672,16 +673,18 @@ fat jar 是唯一交付形态（9.4.1），但 `init-workspace.sh` / archetype /
 
 `workspace` 仓的 `codegen` skill 承担这件事，约定：
 
-- **版本**：`.claude/workspace.env` 的 `CODEGEN_VERSION` 优先；留空则取 GitHub `releases/latest`。
-  codegen 走独立版本线，与框架版本号不对齐是正常的（9.4 理由 2）。
+- **版本 = 框架版本**（9.4 的约定）。默认取业务后端工程 `pom.xml` 里的
+  `<describeadmin.version>`（`framework-bom` 的版本），去 GitHub 找同号的 `codegen` Release。
+  `.claude/workspace.env` 的 `CODEGEN_VERSION` 可覆盖（用于框架版本尚无对应 codegen 发布、
+  或想试更新一版时）。二者都取不到才退到 `releases/latest`。
+- **兼容性判据**：同号即匹配。codegen 与框架同版本发布，`0.2.x` 的 codegen 产出的薄代码
+  就对应 `0.2.x` 的框架基类契约，不必靠编译试错。取不到严格同号时（例如框架发了补丁号而
+  codegen 没跟）取同 `大.小` 的最新 codegen。
 - **缓存位置**：`~/.describeadmin/codegen/<版本>/codegen.jar`，**per-user、跨项目与
   `git worktree` 共用**，不放进工作空间——describe 的每个 worktree 只拷 `.claude/`，
-  per-user 缓存能被所有 worktree 复用，也不被 `describe.sh clean` 误删，每台机器通常只下一次。
+  per-user 缓存能被所有 worktree 复用，也不被 `describe.sh clean` 误删。
+  多个项目用不同框架版本时，各自的 codegen jar 按版本号分目录并存。
 - **完整性**：随 jar 一起取 `.sha256`，比对通过才落缓存。
-- **兼容性判据**：目前没有「codegen 版本 ↔ 框架版本」的正式对照表（不同于 `registry.md`
-  对插件的最低框架版本要求）。判据是**编译兜底**——生成的薄代码继承框架基类，编不过就说明
-  这个 codegen 版本对应的基类契约比当前框架新，钉一个更早的 `CODEGEN_VERSION` 重跑。
-  等框架出现多个并存的大版本时，应在 `registry.md` 补一张对照表把判据前移到「事前」。
 - **形态**：刻意不做配套 shell 脚本。「下载 + 校验 + 缓存 + `java -jar`」写进 skill 的
   SKILL.md 由 AI 执行即可，不构成需要脚本封装的状态机（对比 `dev-env` / `describe` 的
   容器/worktree 编排）。
@@ -871,7 +874,7 @@ AI 自主测试存在误报/漏报的可能，尤其是纯视觉判断类场景�
 2. **发现并记录前端分层的不对称**：系统管理的后端已收回 `framework-system-starter`，前端页面（实测 1,376 行）却仍留在应用层，导致框架修复无法到达业务方。决定新增 `@describeadmin/system-ui`（9.3.1）。
 3. **补齐 4.1 未回答的问题**——业务方的应用外壳从何而来。决定由 `npm create @describeadmin/app` 生成，并如实记录"外壳不会自动升级"这一代价（9.3.2）。
 4. **明确 codegen 的定位与交付形态**：独立成仓的依据是依赖方向；交付形态为 Maven 插件（主）+ fat jar（辅）；并规定其绝不作为业务方运行时依赖（9.4）。
-   &nbsp;&nbsp;&nbsp;&nbsp;↳ **2026-08-28 修订**：放弃 Maven 插件形态，codegen 只做可执行 fat jar，jar 的获取/校验/缓存由 `workspace` 仓的 `codegen` skill 承担（见 9.4.1、9.4.3）。
+   &nbsp;&nbsp;&nbsp;&nbsp;↳ **2026-08-28 修订**：(a) 放弃 Maven 插件形态，codegen 只做可执行 fat jar，jar 的获取/校验/缓存由 `workspace` 仓的 `codegen` skill 承担（见 9.4.1、9.4.3）；(b) codegen 版本号与 `framework` 保持一致（独立成仓 ≠ 版本号独立），使「按框架版本取对应 codegen」可查表确定（见 9.4）。
 5. **接入不靠文档靠模板**：三个已实测的接入坑（发现 ②⑥⑧）改由 `describeadmin-archetype` 固化（9.2.2）。
 6. **4.3 前端版本表按 Vben 5.7.0 实际 catalog 修正**——该修正已在正文标注为 v0.5，此前未在本附录登记，此处补记。
 
