@@ -180,6 +180,34 @@ repos:
       #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
       - io.github.describeadmin:framework-crypto-starter
 
+  - name: framework-excel-starter
+    group: ext
+    status: active
+    lang: java
+    spi: "(none — Web 层扩展点 ResponseBodyAdvice / HandlerMethodArgumentResolver)"
+    desc: Excel 导入导出：门面 ExcelExporter/ExcelImporter + @ExcelResponse/@ExcelBody 注解与 MVC 糖，基于 Apache Fesod（孵化中）
+    framework_min: "0.2.0"   # 依赖 framework-web-starter 0.2.0 的 MVC 装配点与 GlobalExceptionHandler 契约
+    note: |
+      第一个 Web 层插件。不实现某个核心 SPI，而是注册框架此前没有的 ResponseBodyAdvice +
+      HandlerMethodArgumentResolver —— 共存式装配，不用 before/beforeName，仅用 afterName
+      排在 FrameworkWebAutoConfiguration 之后；全部 @ConditionalOnMissingBean 绑定到接口，
+      业务方自注册的 ExcelExporter/ExcelImporter 一定赢。
+      不碰 BaseController、不新增端点、不新增权限动作：业务方在自己的 Controller 里写导出/
+      导入端点并自行 @PreAuthorize（CLAUDE.md 4.5 的四动作不变）。
+      雪花 Long 默认写成文本单元格（同 CLAUDE.md 4.8），@ExcelLongNumber 逃生舱。
+      导入前自校验文件头 —— Fesod/POI 对无法识别的字节不抛异常而是当 CSV 静默解析出 0 行。
+      字典 ⇄ 字面量转换 v1 未内置，仅在 api/ 重导出 Fesod Converter SPI，DB 版 @ExcelDict
+      推迟到 v0.3.0（装配接缝已在 DictConverterConfiguration 留出）。
+      基于 org.apache.fesod:fesod-sheet:2.0.2-incubating；刻意不 import fesod-bom（它只仲裁
+      slf4j-api 1.7.36 与 lombok，会顶掉 Spring Boot 3.5 的 slf4j 2.x）。
+      ⚠️ Apache Fesod 孵化中：POM 自述 EasyExcel 衍生代码 IP clearance 未完成，下游需自行做
+      许可审查（已写进 README 兼容性小节与 registry.md）。
+      POM 不继承 framework-parent，import framework-bom。42 个测试全绿，无需 Docker。
+    publishes:
+      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Maven Central 后才能发本插件 ——
+      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      - io.github.describeadmin:framework-excel-starter
+
   - name: framework-auth-zhengwuding-starter
     group: ext
     status: planned

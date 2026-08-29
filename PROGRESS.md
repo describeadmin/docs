@@ -6,7 +6,61 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-28（`codegen` 实现 flat 包布局：`--layout` / `layout:` / `CODEGEN_LAYOUT` 三来源，默认 nested；并用它把 `sample-app` 的 `project` 模块重新生成为 flat，顺带修出 `permPrefix()` 该用 `public` 的既有 bug，见下方新增章节）**
+**最后更新：2026-08-29（新建 `framework-excel-starter` 插件仓：Excel 导入导出，基于 Apache Fesod 孵化版；门面 + `@ExcelResponse`/`@ExcelBody` 注解糖；42 个测试全绿；已登记 `repos.yml` / `registry.md`。见下方新增章节）**
+
+***
+
+## 2026-08-29 追加：`framework-excel-starter` 插件仓
+
+管理后台高频需求，框架侧此前无此能力（`framework/pom.xml` 的 `enforce-core-thin` 早已
+ban 掉 `org.apache.poi:*`，等于预设它必须是仓外插件）。
+
+**交付（新仓 `framework-excel-starter`，`0.1.0-SNAPSHOT`，本地建仓未推远端）**：
+
+- **底层库**：Apache Fesod（孵化中）—— Alibaba EasyExcel / FastExcel 的 ASF 捐赠版，
+  `org.apache.fesod:fesod-sheet:2.0.2-incubating`。用户指定。类名已用 `unzip` 核实
+  （入口 `org.apache.fesod.sheet.FesodSheet`，注解 `...sheet.annotation.ExcelProperty`，
+  转换器 `...sheet.converters.Converter`，监听 `...sheet.read.listener.ReadListener`）。
+  刻意**不 import `fesod-bom`**——实测它只仲裁 slf4j-api 1.7.36 与 lombok，会顶掉
+  Spring Boot 3.5 的 slf4j 2.x。给 `fesod-sheet` 写死版本即可。
+- **`api/`**：门面 `ExcelExporter` / `ExcelImporter`（零 MVC 依赖）、`ExcelWriteOptions` /
+  `ExcelReadOptions`、`ExcelImportResult<T>`（record，Jackson 可序列化）+ `RowError`
+  （record，行号/字段/列名/消息/拒绝值）、`@ExcelResponse` / `@ExcelBody` /
+  `@ExcelLongNumber` / `LongCellMode`、`ExcelConverter<J>`（Fesod `Converter` 薄再导出）、
+  `ExcelParseException` / `ExcelIoException`。
+- **`core/`**：`FesodExcelExporter` / `FesodExcelImporter`、`CollectingReadListener`、
+  `LongCellConverter`（`Long` 默认写文本单元格，同 CLAUDE.md 4.8；`@ExcelLongNumber` 逃生舱
+  据 `WriteConverterContext.getContentProperty().getField()` 判断）、`ExcelResponseBodyAdvice`
+  （`@RestControllerAdvice` + `ResponseBodyAdvice`，`supports()` 只查一次注解，写裸流后
+  `return null`，Spring 对 null body 跳过转换）、`ExcelBodyArgumentResolver`、
+  `ResponseShapeUnwrapper`（`List` / `PageResult` / `Result<…>` 四形状）、
+  `ExcelContentDisposition`（ASCII 名走 `filename="..."`，非 ASCII 才带 charset 触发 RFC 5987）。
+- **`autoconfigure/`**：`FrameworkExcelAutoConfiguration`——共存式装配，`afterName`
+  `FrameworkWebAutoConfiguration`（字符串形式，web-starter 是 provided+optional），
+  `@ConditionalOnMissingBean` 绑**接口**（单一门面，业务方注册的实现整体顶替）；
+  嵌套 `ExcelWebMvcConfiguration`（`@ConditionalOnWebApplication` + 字符串 `@ConditionalOnClass`）
+  注册 advice + resolver；嵌套 `DictConverterConfiguration` 是 v0.3.0 空桩。
+  `FrameworkExcelProperties`（`describeadmin.excel`，`getImport()` 让键落在 `import.*`）。
+- **不碰 `BaseController`、不新增端点、不新增权限动作**（用户明确要求）——业务方自己写
+  `@GetMapping("/export")` / `@PostMapping("/import")` 并 `@PreAuthorize`，README 写清用法。
+- **测试 42 个全绿**（无 Docker）：`ApplicationContextRunner` 装配（路径 1/2 + businessBeanWins +
+  与 `FrameworkWebAutoConfiguration` 共存 + `import.*`/`export.*` 绑定）、真 xlsx 往返
+  （中文 + 19 位雪花 Long 逐值精确、文本 vs 数值单元格用 POI 直读断言、坏单元格 → `RowError`、
+  trim、maxRows）、门面写 `MockHttpServletResponse`、MockMvc advice（四返回形状 + `/plain` 仍 JSON +
+  坏形状抛 `IllegalStateException`）、MockMvc multipart resolver（绑 `List`/`ExcelImportResult`、
+  非 multipart / 空文件 / 非 Excel → `BizException(40000)` 由 `GlobalExceptionHandler` 渲染、failFast）。
+- **一条真实陷阱**（已写进 README + `FesodExcelImporter` javadoc）：Fesod / POI 遇到无法识别的
+  字节时**不抛异常**，而是当 CSV 静默解析出 0 行——业务方会拿到"空导入"而非"文件不对"。
+  `FesodExcelImporter` 因此在交给 Fesod 前先自校验文件头（xlsx = ZIP `PK..`，xls = OLE2）。
+- 根文件整套照抄 `framework-cache-redis-starter`（`LICENSE` / `NOTICE` / `.gitattributes` /
+  完整 `.gitignore` / `CLAUDE.md` 副本 / `.github/workflows/ci.yml` 带框架版本矩阵 + 新增
+  「无 Jackson 3」守卫）。`mvn clean verify -Prelease -Dgpg.skip=true` 产出 sources/javadoc jar。
+- 已登记 `docs/repos.yml`（group `ext`，status active）+ `docs/registry.md`（现有插件表 +
+  规划中加一行 `@ExcelDict` DB 版）。
+
+**未做**：远端建仓与推送（等人工确认）；`sample-app` 端到端集成（加临时 `EmployeeExcelController`
++ `EmployeeExcelIT` 走 Testcontainers MySQL 往返）——计划见
+`.claude/plans/dapper-splashing-hennessy.md` §8；发布须等 framework 0.2.0 上 Central。
 
 ***
 
