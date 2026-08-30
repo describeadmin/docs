@@ -245,7 +245,8 @@ curl -s https://repo1.maven.org/maven2/io/github/describeadmin/framework-bom/mav
 **不发布到 Maven Central。** 理由不是省事：`develop_plan.md` 9.4 定了
 `codegen` 绝不出现在业务方 `pom.xml` 的 `<dependencies>` 中——它是命令行工具，
 产物一旦生成即脱离生成器。既然没有「依赖它」的消费者，发到 Central 没有意义。
-Central 只对未来的 `describeadmin-codegen-maven-plugin` 形态有价值。
+（曾设想的 `describeadmin-codegen-maven-plugin` 形态会需要 Central，但该形态已于
+2026-08-28 放弃，见 `develop_plan.md` §9.4.1。codegen 只做 fat jar，只发 GitHub Release。）
 
 ```bash
 cd codegen
@@ -383,7 +384,7 @@ mvn -f framework/pom.xml clean verify -Prelease -Dgpg.skip=true
 | 制品被拒：`Missing javadoc/sources` | 未启用 `-Prelease` | 发布必须带 `-Prelease` |
 | `tag v0.1.0 与 POM 版本 X 不一致` | 忘了 `versions:set` 或忘了提交 | 对齐后重新打 tag |
 | 版本号已被占用 | Central 版本**不可覆盖** | 只能发下一个版本号 |
-| 构建用了错误的 JDK | 未配置 toolchains | 见 `scripts/toolchains.xml.sample` 与 `develop_plan.md` 2.2.2 |
+| `不支持发行版本 17` / 构建 JDK 太旧 | Maven 跑在 JDK < 17 上 | 把 `JAVA_HOME` 指向 JDK 17+（enforcer 的 `requireJavaVersion` 已会拦下）；见 `develop_plan.md` 2.2.2 |
 
 ---
 

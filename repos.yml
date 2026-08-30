@@ -17,7 +17,8 @@ host: github.com
 #   ├── docs/                ← 本仓库所在处（元信息）
 #   ├── framework/           ← 独立 git 仓库
 #   ├── sample-app/          ← 独立 git 仓库
-#   └── frontend/            ← 独立 git 仓库
+#   ├── frontend/            ← 独立 git 仓库
+#   └── sample-frontend/     ← 本地独立 git 仓库，但尚未推送任何远端，见下
 #
 # 各仓库检出到本文件所在目录（docs/）的同级。
 
@@ -69,13 +70,13 @@ repos:
       会同时向两个仓库输出（Java/SQL → <业务>-server，Vue/TS → <业务>-web），
       因此交付形态必须能跨仓工作。
     publishes:
-      # ⚠️ 尚未发布。POM 已配齐 Central 所需的 license/developers/scm/url 与 shade 打包，
-      #    但本仓【没有 release.yml】，发布链路尚未打通（framework 仓已有）。
-      # 主交付形态（planned，9.4.1）：业务方在 <build><plugins> 中声明，
-      # frontendOut 指向同级的 <业务>-web；版本由 framework-bom 仲裁，与框架版本联动。
-      # 选插件而非 java -jar 的理由见 9.4.1——它在 pom.xml 里是可被 AI Agent 发现的。
-      - io.github.describeadmin:describeadmin-codegen-maven-plugin
-      # 辅助形态：可执行 fat jar，随 GitHub Release 分发，供非 Maven 场景与 CI 使用
+      # 唯一交付形态（9.4.1，2026-08-28 定）：可执行 fat jar，随 GitHub Release 分发
+      # （codegen/.github/workflows/release.yml，打 tag v* 触发）。
+      # 【不发 Maven Central】：codegen 绝不进业务方 pom.xml 的 <dependencies>（9.4），
+      # 没有"依赖它"的消费者，发 Central 没有意义。
+      # 曾计划的 describeadmin-codegen-maven-plugin 主形态已放弃——可发现性改由
+      # 业务方工作空间的 CLAUDE.md §6 + workspace 仓的 codegen skill 承担（见 9.4.1）。
+      # jar 的获取/校验/缓存（~/.describeadmin/codegen/<版本>/）也由该 skill 负责（9.4.3）。
       - io.github.describeadmin:codegen
 
   - name: db-compat-checker
@@ -84,7 +85,129 @@ repos:
     lang: java
     desc: 数据库兼容性自检工具（见 develop_plan.md 2.3.3 / 5.5）
 
+  # ---------- 业务方工作空间 ----------
+  #
+  # 与上面 core/tools 两组的关键区别：那两组是框架团队自己用/自己发布给业务方当依赖的东西，
+  # 业务方不会直接 clone 它们。这一组的受众是业务方本身——本仓库虽然由框架团队维护
+  # （所以照样登记在这里、照样被 clone-all.sh 拉取），但它的产出是直接进业务方工作空间的
+  # 文件（CLAUDE.md、.claude/skills/），不是 Maven/npm 依赖。
+  - name: workspace
+    group: enablement
+    status: active
+    lang: shell
+    desc: >
+      业务方工作空间初始化器——init-workspace.sh 一条命令生成 <name>-server
+      （archetype）+ <name>-web（create-app）+ AI 工作目录（业务方视角的 CLAUDE.md +
+      .claude/skills/ 下的 dev-env、visual-test 两个 Claude Code skill）
+    note: |
+      承接 develop_plan.md 目标 #2/#4/#5（面向 AI 编程、worktree 支持、AI 自动化测试）
+      在业务方侧的落地——这三个目标此前只有框架团队自己的验证载体（sample-app/
+      sample-frontend），从未有交付给业务方的东西。首选分发方式是
+      `curl -fsSL .../init-workspace.sh | bash -s -- <name>`，不需要业务方先手工
+      clone 任何仓库。
+      仓库结构与生成物结构 1:1 对应（仓库根目录下除 README.md/init-workspace.sh 外的
+      每样东西都会被原样复制到生成出的工作空间），细节见该仓库自己的 README.md。
+    publishes:
+      # 已建仓并推送（2026-08-26，人工确认后）：
+      # github.com/describeadmin/workspace（main 分支）。
+      # 不发布 Maven/npm 制品——产出是文件，不是依赖坐标。
+
   # ---------- 后端可选插件 ----------
+  #
+  # 插件一律独立成仓（3.1.1），不作为 framework 仓的 module。
+  # 两条理由：版本线不绑定（框架发 0.3.0 时一行没改的插件不必跟着发，
+  # 插件修 bug 也不必等框架的发布窗口），发布不捆绑（framework 的 mvn deploy
+  # 不会把插件一起推上 Central）。
+  #
+  # 每个插件必须声明【适配的最低框架版本】，并在三处保持一致：registry.md 的表格、
+  # 插件 POM 里 import 的 framework-bom 版本、代码里的常量 + 启动期自检。
+  # 详见 registry.md 准入规范第 4、5 条。
+  - name: framework-cache-redis-starter
+    group: ext
+    status: active
+    lang: java
+    spi: CacheProvider, TokenStore
+    desc: 把 CacheProvider 与 TokenStore 切换到 Redis，解除内存实现的重启掉线与不支持多实例
+    framework_min: "0.2.0"   # 用到 0.2.0 引入的 TokenStore.listActive() 与 ActiveSession
+    note: |
+      第一个可选插件，也是"能力可插拔"这条设计的第一个真实证据。
+      POM 【不继承 framework-parent】，改为 import framework-bom —— 那正是业务方消费框架的
+      姿势，插件用同一套姿势才能提前暴露业务方会遇到的问题。
+      ⚠️ framework-bom 【不仲裁】本插件的版本：插件有自己的版本线，
+      让 BOM 按框架版本去解析插件，业务方会拿到一个根本不存在的制品。引用时须显式写版本号。
+    publishes:
+      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Central 后才能发本插件 ——
+      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      - io.github.describeadmin:framework-cache-redis-starter
+
+  - name: framework-auth-email-starter
+    group: ext
+    status: active
+    lang: java
+    spi: AuthProvider, NotifyChannel
+    desc: 邮箱验证码（无密码）登录；可选提供 email 通知渠道
+    framework_min: "0.2.0"
+    note: |
+      代码与测试已在本地写好（28 个测试全绿，含 GreenMail 真实收发验证）。
+      2026-08-22 人工确认后已建仓并推送：github.com/describeadmin/framework-auth-email-starter
+      （master 分支）。registry.md 对应行状态改为「待发布」——等 framework 0.2.0
+      先发到 Central，本插件 import 的 framework-bom 才有一个真实存在的版本可引用。
+      已应用到 sample-app（本地 mvn install -Dgpg.skip=true 装进 .m2）+ sample-frontend，
+      chrome-devtools 走过完整的发码→MailHog 收码→登录成功链路。
+
+  - name: framework-crypto-starter
+    group: ext
+    status: active
+    lang: java
+    spi: CryptoProvider
+    desc: 面向业务方自己实体的字段级敏感数据加密入库（AES-256-GCM / SM4-GCM + 盲索引 + 手动加解密门面）
+    framework_min: "0.2.0"   # 用到 0.2.0 开放给外部模块的 ObjectProvider<InnerInterceptor> 扩展点
+    note: |
+      代码与测试已在本地写好（57 个测试全绿，含 MySQL 5.7/8.4 双版本 Testcontainers
+      端到端集成测试）。2026-08-24 人工确认后已建仓并推送：
+      github.com/describeadmin/framework-crypto-starter（master 分支）。registry.md
+      对应行状态改为「待发布」——等 framework 0.2.0 先发到 Central，本插件 import 的
+      framework-bom 才有一个真实存在的版本可引用。
+      与 framework-auth-email-starter 的关键差异：不是给核心 sys_user 加能力，而是给
+      *业务方自己的实体*提供开箱即用的字段加密，框架核心零改动即可挂上——盲索引自动填充
+      复用 framework-mybatis-starter 0.2.0 已开放的 ObjectProvider<InnerInterceptor>
+      扩展点，不是新开的口子。SM4 依赖 Bouncy Castle 声明为 optional，只用 AES 的业务方
+      不受影响。落地过程中发现一条真实 MyBatis-Plus 陷阱：@TableField(typeHandler=...)
+      对 SELECT 生效必须配合实体上的 @TableName(autoResultMap = true)，缺了不报错只是
+      查出来的是密文——已写进插件 README 与 EncryptedStringTypeHandler 的 javadoc。
+    publishes:
+      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Central 后才能发本插件 ——
+      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      - io.github.describeadmin:framework-crypto-starter
+
+  - name: framework-excel-starter
+    group: ext
+    status: active
+    lang: java
+    spi: "(none — Web 层扩展点 ResponseBodyAdvice / HandlerMethodArgumentResolver)"
+    desc: Excel 导入导出：门面 ExcelExporter/ExcelImporter + @ExcelResponse/@ExcelBody 注解与 MVC 糖，基于 Apache Fesod（孵化中）
+    framework_min: "0.2.0"   # 依赖 framework-web-starter 0.2.0 的 MVC 装配点与 GlobalExceptionHandler 契约
+    note: |
+      第一个 Web 层插件。不实现某个核心 SPI，而是注册框架此前没有的 ResponseBodyAdvice +
+      HandlerMethodArgumentResolver —— 共存式装配，不用 before/beforeName，仅用 afterName
+      排在 FrameworkWebAutoConfiguration 之后；全部 @ConditionalOnMissingBean 绑定到接口，
+      业务方自注册的 ExcelExporter/ExcelImporter 一定赢。
+      不碰 BaseController、不新增端点、不新增权限动作：业务方在自己的 Controller 里写导出/
+      导入端点并自行 @PreAuthorize（CLAUDE.md 4.5 的四动作不变）。
+      雪花 Long 默认写成文本单元格（同 CLAUDE.md 4.8），@ExcelLongNumber 逃生舱。
+      导入前自校验文件头 —— Fesod/POI 对无法识别的字节不抛异常而是当 CSV 静默解析出 0 行。
+      字典 ⇄ 字面量转换 v1 未内置，仅在 api/ 重导出 Fesod Converter SPI，DB 版 @ExcelDict
+      推迟到 v0.3.0（装配接缝已在 DictConverterConfiguration 留出）。
+      基于 org.apache.fesod:fesod-sheet:2.0.2-incubating；刻意不 import fesod-bom（它只仲裁
+      slf4j-api 1.7.36 与 lombok，会顶掉 Spring Boot 3.5 的 slf4j 2.x）。
+      ⚠️ Apache Fesod 孵化中：POM 自述 EasyExcel 衍生代码 IP clearance 未完成，下游需自行做
+      许可审查（已写进 README 兼容性小节与 registry.md）。
+      POM 不继承 framework-parent，import framework-bom。42 个测试全绿，无需 Docker。
+    publishes:
+      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Maven Central 后才能发本插件 ——
+      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      - io.github.describeadmin:framework-excel-starter
+
   - name: framework-auth-zhengwuding-starter
     group: ext
     status: planned
@@ -108,25 +231,28 @@ repos:
     upstream: https://github.com/vbenjs/vue-vben-admin
     upstream_snapshot: v5.7.0
     upstream_tracking: false   # 已与上游断开，不做 merge
-    app: apps/admin            # 唯一应用，由官方 apps/web-ele 更名而来
+    app: apps/admin            # 框架自己的联调 playground，由官方 apps/web-ele 更名而来
     note: |
       packages/ 下全部代码的维护责任（含安全修复）自快照之日起由框架团队承担，
       上游的更新与 bugfix 不会自动流入。见 NOTICE.md。
       应用直连真实后端，不带 mock —— 上游的 apps/backend-mock 已删除。
+      ⚠️ apps/admin 自 2026-08-21 起【不再是业务方的接入起点】（与 sample-app 同一时点的
+      同一类调整）——那是 @describeadmin/create-app 的职责，见该包 README。
     publishes:
-      # ⚠️ 尚未发布。这些包目前以源码形式（exports 指向 src/*.ts）在 workspace 内互引，
-      #    要真正 publish 还需补 tsdown 构建产物与 publishConfig，属未完成事项。
+      # ⚠️ 尚未发布到 npm registry。这些包已具备 publishConfig/files/exports 与 tsdown
+      #    构建产物，结构上 publish-ready，但发布链路（changeset publish）尚未打通——
+      #    本地验证改用 `pnpm pack` + file: 依赖，见 sample-frontend 仓。
       - "@describeadmin/ui"
       - "@describeadmin/layouts"
       - "@describeadmin/access"
       - "@describeadmin/request"
-      # planned（9.3.1）：系统管理四个页面（实测 1,376 行）目前在 apps/admin 的应用层，
-      # 与后端 framework-system-starter 不对称——业务方复制走应用外壳后，
-      # 框架对这些页面的修复将无法到达。收进本包后业务方只保留路由挂载点。
+      # ~~planned（9.3.1）~~ 已实现（2026-08-21）：系统管理四页面 + 首页统计卡片
+      # （原 1,376 行 + dashboard）已收进本包，与后端 framework-system-starter 对称。
+      # apps/admin 现在反过来消费本包（workspace:*），验证"框架自己也吃自己的狗粮"。
       - "@describeadmin/system-ui"
-      # planned（9.3.2）：`npm create @describeadmin/app` 的实现包。
-      # 生成业务方的应用外壳（收走 system-ui 后约 2,200 行），替代 fork apps/admin。
-      # 外壳不会自动升级，因此必须尽可能薄——这是升级机制成立的前提，不是洁癖。
+      # ~~planned（9.3.2）~~ 已实现（2026-08-21）：`npm create @describeadmin/app` 的
+      # 实现包，template/ 是收走 system-ui 后 apps/admin 外壳的裁剪副本（手工维护同步，
+      # 见包内 README）。已用它生成 sample-frontend 并跑通登录 + 系统管理 CRUD 全链路。
       - "@describeadmin/create-app"
 
   # ---------- 样板 / 验证 ----------
@@ -142,3 +268,22 @@ repos:
       ⚠️ 自 0.1.1 起【不再是业务方的接入起点】——那是 describeadmin-archetype 的职责。
       本仓保留的 maven-toolchains-plugin 也只服务于「以最低支持版本 JDK 17 构建」这个
       框架侧验证目的，业务工程不应照抄（见 VERSION_BASELINE 发现 ⑥ 的修正）。
+      2026-08-22 起同时承担登录模块 A~E 项修复与 framework-auth-email-starter 插件的
+      集成测试载体，详见 docs/PROGRESS.md 对应章节。
+
+  - name: sample-frontend
+    group: sample
+    status: active
+    lang: ts
+    desc: 前端的业务模拟样板，与 sample-app 对称——验证前端包能否被真正外部消费
+    note: |
+      测试夹具，【不是产品的一部分】，永远不发布到 npm registry，也尚未推送任何 GitHub
+      远端（本地是独立 git 仓库，`git remote -v` 为空）。由 `npm create @describeadmin/app` 生成，之后
+      按业务需要接了一个示例模块。
+      不属于 frontend 的 pnpm workspace，@describeadmin/* 依赖尚未真正发布前，用
+      `pnpm pack` 出的本地 tarball（脚本见 scripts/pack-local-deps.sh）+ pnpm 的
+      overrides 模拟——效果等价于真实 npm 安装，只是省了发布这一步。
+      已验证：登录 → 菜单树（component 路径与后端 seed-rbac.sql 对上）→
+      system-ui 提供的用户/角色/菜单/部门管理 CRUD，全链路可用。
+      2026-08-22 新增邮箱验证码登录页面（email-login.vue），与 sample-app 的
+      framework-auth-email-starter 插件配对验证，详见 docs/PROGRESS.md 对应章节。

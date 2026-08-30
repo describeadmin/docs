@@ -1,7 +1,7 @@
 # AI 原生管理后台脚手架 —— 开发方案
 
 **文档状态**：草案 v0.5，技术选型已全部确认并经**权威源核验**，待团队最终评审
-**技术栈**：Java 17+（构建用 21）+ Spring Boot 3.5.16（后端）／ Vue3 + Vben Admin 5.7.0 + Element Plus（前端）
+**技术栈**：Java 17+（构建 JDK ≥ 17 即可）+ Spring Boot 3.5.16（后端）／ Vue3 + Vben Admin 5.7.0 + Element Plus（前端）
 **组织**：`describeadmin`（GitHub：<https://github.com/describeadmin）>
 **编写日期**：2026-08-19（v0.4 修订）
 
@@ -113,7 +113,7 @@
 
 > ⚠️ **未决事项**：Spring Boot 3.5.x 的 OSS 支持终止日期未能核实（`spring.io` 支持时间线页与 `endoflife.date` 在核验环境均不可达）。间接证据表明该线仍活跃，但**精确 EOL 日期需人工查证**，因为它直接决定上述迁移债的偿还时点。这是本方案目前唯一的开放技术问题。
 
-#### 2.2.2 Java 版本策略：最低 17，构建 21，编译目标 17（v0.4 新增）
+#### 2.2.2 Java 版本策略：最低 17，构建 JDK ≥ 17，编译目标 17（v0.4 新增；构建 JDK 策略于第八轮修订）
 
 **事实基线**（已核验）：Spring Boot 3.5.16 的最低 Java 版本是 **17**，不是 21。判据两条——`spring-boot-starter-parent-3.5.16.pom` 中 `<java.version>17</java.version>`；`spring-boot-3.5.16.jar` 的 `MANIFEST.MF` 中 `Build-Jdk-Spec: 17`。
 
@@ -121,18 +121,19 @@
 
 | 项                            | 取值             | 理由                  |
 | ---------------------------- | -------------- | ------------------- |
-| **框架构建 JDK**                 | 21             | 使用较新的编译器与工具链        |
+| **框架构建 JDK**                 | **17 或更高**     | `release=17` 已锁定产物字节码版本；用哪个 JDK 构建由构建者自定，enforcer `requireJavaVersion [17,)` 兜底 |
 | **`maven.compiler.release`** | **17**         | 产出字节码在 Java 17 上可运行 |
 | **业务方运行时要求**                 | **17+**（建议 21） | 框架不替业务方决定 JDK 版本    |
 
 **为什么编译目标定 17 而不是 21**：这与 2.3 节"框架不指定数据库与驱动"是同一条原则。政务项目中业主环境的 JDK 版本同样不由我方选择，把目标定在 21 会无谓地将仍在 17 上的使用方挡在门外。而这套框架的核心价值不在虚拟线程、模式匹配这类 21 语言特性上——兼容面比这些特性更值钱。若将来确有必须使用 21+ 特性的场景，按第七章流程作为一次大版本变更处理。
 
-**多 JDK 共存的工程约束**：开发机上普遍并存多个 JDK，依赖"每次记得设置 `JAVA_HOME`"对协作者和 AI Agent 都不可靠。因此：
+**构建 JDK 不再钉死具体版本（第八轮修订）**：`maven-toolchains-plugin` 曾被引入以解决"开发机多 JDK 并存、靠手工 `JAVA_HOME` 不可靠"的问题，但实践证明弊大于利：
 
-- 父 POM 引入 `maven-toolchains-plugin`，显式声明本项目所需的 JDK 版本
-- 开发者本地维护 `~/.m2/toolchains.xml` 登记各 JDK 路径，Maven 自行选择，与 `PATH` 上是哪个 `java` 无关
-- CI 侧由 `actions/setup-java` 固定版本
-- `toolchains.xml` 的样例与配置说明作为阶段 0 交付物
+- `release=17` 本身已保证产物在 Java 17 上运行；构建 JDK 只要 ≥ 17（`--release 17` 的编译前提）即可，17 / 21 / 25 产出的字节码一致
+- toolchains 把要求收紧成"必须有一个指定版本、否则先配 `~/.m2/toolchains.xml`"，没配的协作者 / AI 会以 `Cannot find matching toolchain` 直接构建失败——比它要防的坑更劝退
+- 因此 `framework` / 各插件仓 / `codegen` 的 POM 一律**移除 `maven-toolchains-plugin`**，改由 `maven-enforcer-plugin` 的 `requireJavaVersion` → `[17,)` 兜底
+- CI 侧仍由 `actions/setup-java` 固定版本（默认 21），与本地构建者用哪个 JDK 无关
+- **唯一保留 toolchains 的是 `sample-app`**，且刻意钉 JDK **17**：用最低支持版本端到端构建业务样例，验证"业务方 Java 17+ 即可"这条承诺（见 VERSION_BASELINE 发现 ⑥ 及第八轮修订）
 
 ### 2.3 数据库兼容策略（v0.4 重写）
 
@@ -247,10 +248,23 @@ CI 测 MySQL 5.7 只能证明"框架没有使用 8.0+ 语法"，**不能证明"�
 - `framework-web-starter`：统一响应体、全局异常处理、请求日志/链路追踪、统一参数校验
 - `framework-security-starter`：认证鉴权基座（基于 Spring Security 6.5.x），内置用户名密码登录，同时定义 `AuthProvider` 等 SPI 接口供扩展
 - `framework-mybatis-starter`：`BaseEntity` / `BaseMapper` / `BaseService` / `BaseController` 泛型基类，封装分页、通用查询、审计字段（创建人/创建时间/更新人/更新时间/逻辑删除），SQL 写法遵循 2.3.1 的语法基线；**不引入任何 JDBC 驱动**
-- `framework-common`：通用工具类、常量、枚举、Result 包装类
+- `framework-common`：通用工具类、常量、枚举、Result 包装类，以及跨模块契约
+  （`CurrentUserProvider`、`PermissionChecker`、`FrameworkVersion`）
+- `framework-cache-starter`：`CacheProvider` 契约 + 零依赖内存实现。
+  集中式实现走插件，本模块不允许引入任何缓存中间件依赖
+- `framework-system-starter`：RBAC（用户 / 角色 / 菜单 / 部门）与登录端点
+
+> 正文早期只列了四个模块，与实际不符，v0.5 回填。**"必选"的判据见能力规划的三条**
+> （定义契约 / 必须唯一且全局生效 / 缺席就不安全），三条全否即应做插件。
 
 **framework-ext（可选，按需引入）**
 
+每个插件**独立仓库、独立版本线、独立发布**，不作为 framework 仓的 module（见 3.1.1）。
+清单与准入规范见 `registry.md`；插件 POM **不继承 `framework-parent`**，
+改为 `import framework-bom`——那正是业务方消费框架的姿势。
+
+- `framework-cache-redis-starter`：把 `CacheProvider` / `TokenStore` 切到 Redis
+  （**已落地**，第一个真实插件）
 - `framework-auth-zhengwuding-starter`：浙政钉登录，实现 `AuthProvider`
 - `framework-notify-dingtalk-starter`：钉钉消息推送，实现 `NotifyChannel`
 - `framework-notify-wecom-starter` / `framework-notify-sms-starter`：企业微信、短信通道，同样按需引入
@@ -559,9 +573,11 @@ Git worktree 本身是原生能力，真正需要做的工作是让项目工具�
 > **发现 ⑥ 的处置已于 2026-08-20 推翻**（VERSION_BASELINE 第八轮）。
 > 真实原因是"Maven 当时跑在 JDK 11 上"，而 Maven 跑在 17+ 本就是硬要求
 > （`repackage` 加载不了），满足后 `release=17` 必然能编，toolchains 无增量价值；
-> 反而因业务方开发机普遍没有 `~/.m2/toolchains.xml` 而会直接打死构建。
+> 反而因开发机普遍没有 `~/.m2/toolchains.xml` 而以 `Cannot find matching toolchain` 直接打死构建。
 > **archetype 不生成 toolchains 配置**，业务方用哪个 JDK 构建是业务方的自由。
-> 该配置只在 `sample-app` 保留，用途是框架团队"以最低支持版本构建"的兼容性验证。
+> 后续（见 2.2.2「第八轮修订」）进一步把 `framework` / 各插件仓 / `codegen` 的
+> `maven-toolchains-plugin` 也一并移除，统一改用 enforcer 的 `requireJavaVersion [17,)` 兜底。
+> 现在**只有 `sample-app` 保留** toolchains 且刻意钉 JDK 17，用途是框架团队"以最低支持版本构建"的兼容性验证。
 
 **结论：接入不能靠文档，必须靠模板。** 框架需交付一个 Maven archetype：
 
@@ -621,29 +637,73 @@ npm create @describeadmin/app <项目名>
 `codegen` 独立成仓（见 3.1.1 与 `repos.yml`），依据是**依赖方向**：它只产出源码文本，运行时不需要任何框架类，其 POM 除 SnakeYAML 外无其他依赖。三条理由：
 
 1. **不污染业务方依赖树**——若并入 `framework`，业务方为跑一次生成器要拖进整个框架依赖树
-2. **版本节奏不同**——生成器是开发期工具，可以快速迭代；框架是运行时制品，受 SemVer 兼容承诺约束。两者绑定会互相拖累
+2. **构建与发布链路独立**——它不进 Maven Central、只发 GitHub Release（9.4.1），CI 与发版流程和 `framework` 完全不同，并入只会互相牵制
 3. **生命周期不同**——产物一旦生成即脱离生成器，业务方运行时完全不需要它
+
+> **独立成仓 ≠ 版本号独立。** `codegen` 的版本号**与 `framework` 保持一致**：生成的薄代码继承框架基类，「这份生成器产出的代码能不能在这个框架版本上编过」这件事必须成对理解。版本对齐还让「按框架版本取对应 `codegen`」变成一次查表就能确定的事（9.4.3），不必靠试错。
 
 由此得到一条硬规定：
 
 > **`codegen` 绝不出现在业务方 `pom.xml` 的 `<dependencies>` 中。** 它是命令行工具，不是库。
 
-#### 9.4.1 交付形态
+#### 9.4.1 交付形态：只做可执行 fat jar（2026-08-28 定）
 
-`codegen` 会**同时向两个仓库输出**（后端 Java/SQL → `<业务>-server`，Vue/TS → `<业务>-web`），因此其交付形态需要能跨仓工作：
+`codegen` 会**同时向两个仓库输出**（后端 Java/SQL → `<业务>-server`，Vue/TS → `<业务>-web`），因此其交付形态需要能跨仓工作。
 
-| 形态 | 用途 |
-|---|---|
-| **Maven 插件**（主）`describeadmin-codegen-maven-plugin` | 在 `<业务>-server` 中声明于 `<build><plugins>`，`frontendOut` 指向同级的 `<业务>-web`。版本由 `framework-bom` 仲裁，与框架版本联动 |
-| **可执行 fat jar**（辅） | 随 GitHub Release 分发，供不使用 Maven 的场景与 CI 使用 |
+**唯一交付形态：可执行 fat jar**（`maven-shade-plugin` 产出 `codegen.jar`，内含 SnakeYAML），随 GitHub Release 分发，`java -jar codegen.jar <spec> --out … --frontend-out …` 调用。
 
-选 Maven 插件为主的理由与目标 #2 直接相关：**它在 `pom.xml` 里是可被发现的**——AI Agent 读一遍业务方的 POM 就知道这个项目用什么生成代码、如何调用；而一条需要外部记忆的 `java -jar` 命令不具备这个性质。
+曾计划再做一个 `describeadmin-codegen-maven-plugin` 作为**主**形态（写进 `<业务>-server` 的 `<build><plugins>`，`mvn describeadmin:gen` 调用），唯一理由是"它在 `pom.xml` 里可被 AI Agent 发现，而 `java -jar` 命令需要外部记忆"。**此形态放弃**，理由：
+
+1. **可发现性已由别处解决**。业务方工作空间的 `CLAUDE.md` §6 + `codegen` skill（9.4.3）就是那份"外部记忆"的载体——AI Agent 进工作空间必读 `CLAUDE.md`，等价于读 POM 能发现插件。插件形态存在的唯一动机就此消失。
+2. **维护面不对称**。插件要额外维护 Mojo、`plugin.xml`、生命周期绑定、跨仓 `frontendOut` 传参，而它包的还是同一个 `CodegenCli`。fat jar 已经有三年实际使用，插件三年没落地——为一个开发期工具养两个入口、两套集成测试不划算。
+
+代价：`java -jar` 的路径、缓存位置不写在业务方 `pom.xml` 里，必须靠 `codegen` skill 承载（见 9.4.3）。版本不是代价——它与框架版本一致，由业务工程的 `<describeadmin.version>` 直接决定（9.4.3）。
 
 #### 9.4.2 使用位置
 
 生成器由**业务方开发者（或其 AI Agent）在开发期调用**，不进入运行时，也不进入业务方的生产构建。典型循环：
 
 写 `codegen-specs/<模块>.yaml` → 跑生成 → 把新增的 `schema-*.sql` / `menu-*.sql` 登记进 `spring.sql.init` → 重启 → 页面出现在侧边栏 → 跑生成出的结构化验收用例。
+
+#### 9.4.3 fat jar 的获取与缓存（`codegen` skill）
+
+fat jar 是唯一交付形态（9.4.1），但 `init-workspace.sh` / archetype / create-app **都不会**
+下载它——codegen 不发 Central、不进 `pom.xml`（9.4 的硬规定），所以「怎么把 jar 弄到手」
+这件事必须在使用侧解决，否则 9.4.2 的「跑生成」这一步在全新工作空间里是断的。
+
+`workspace` 仓的 `codegen` skill 承担这件事，约定：
+
+- **版本 = 框架版本**（9.4 的约定）。默认取业务后端工程 `pom.xml` 里的
+  `<describeadmin.version>`（`framework-bom` 的版本），去 GitHub 找同号的 `codegen` Release。
+  `.claude/workspace.env` 的 `CODEGEN_VERSION` 可覆盖（用于框架版本尚无对应 codegen 发布、
+  或想试更新一版时）。二者都取不到才退到 `releases/latest`。
+- **兼容性判据**：同号即匹配。codegen 与框架同版本发布，`0.2.x` 的 codegen 产出的薄代码
+  就对应 `0.2.x` 的框架基类契约，不必靠编译试错。取不到严格同号时（例如框架发了补丁号而
+  codegen 没跟）取同 `大.小` 的最新 codegen。
+- **缓存位置**：`~/.describeadmin/codegen/<版本>/codegen.jar`，**per-user、跨项目与
+  `git worktree` 共用**，不放进工作空间——describe 的每个 worktree 只拷 `.claude/`，
+  per-user 缓存能被所有 worktree 复用，也不被 `describe.sh clean` 误删。
+  多个项目用不同框架版本时，各自的 codegen jar 按版本号分目录并存。
+- **完整性**：随 jar 一起取 `.sha256`，比对通过才落缓存。
+- **形态**：刻意不做配套 shell 脚本。「下载 + 校验 + 缓存 + `java -jar`」写进 skill 的
+  SKILL.md 由 AI 执行即可，不构成需要脚本封装的状态机（对比 `dev-env` / `describe` 的
+  容器/worktree 编排）。
+
+#### 9.4.4 包布局：nested（默认）与 flat（2026-08-28 定）
+
+生成的后端 Java 文件默认落在 `<basePackage>.<module>.<layer>`（`nested`），按模块隔离。
+只有少量模块、不想要模块层级的小工程可切到 `flat`——`<basePackage>.<layer>`。
+
+- **只影响后端 Java 包与文件落点**。前端目录、`schema-*.sql` / `menu-*.sql`、
+  `test-specs/*.yaml`、`permPrefix()`、`@RequestMapping` 一律以模块名 / 表名为准。
+  实现上只有一处开关：`ModuleSpec.packageOf()`；`package` 声明与跨层 import 全从它派生。
+- **取值优先级**（命中即用）：`--layout <nested|flat>` 命令行参数 → spec 顶层 `layout:` 键
+  → `CODEGEN_LAYOUT` 环境变量（`workspace` 仓可据此设项目级默认，`codegen` skill 不加逻辑、
+  直接透传环境）→ 内置默认 `nested`。任何一层给了非法取值都 fail fast 并点明来源。
+- **配套提示**：切到非默认布局时，生成输出多打一行 `布局: flat（来自 …）`，
+  避免 `CODEGEN_LAYOUT` 隔空生效时难以排查。
+- **已知坑**：生成器从不删文件，中途从 `nested` 切 `flat` 会在旧 `<module>/` 子包下留孤儿，
+  需手工清理——所以布局应开工即定，`workspace` 的 env 默认值负责这件事。
 
 ### 9.5 目标状态下的完整接入流程
 
@@ -659,10 +719,51 @@ npm create @describeadmin/app <项目名>
 
 # 4. 起服务，用初始账号登录，得到一个带完整 RBAC 的后台
 
-# 5. 加业务模块：写 spec → mvn describeadmin:gen → 登记 SQL → 重启
+# 5. 加业务模块：写 spec → java -jar codegen.jar（codegen skill 代取） → 登记 SQL → 重启
 ```
 
 **验收标准**：一个此前没接触过本框架的开发者，照上述步骤能在 30 分钟内得到一个可登录、带 RBAC、含一个自建业务模块的后台，且全程不需要阅读 `VERSION_BASELINE.md`。
+
+#### 9.5.1 统一入口：`workspace` 仓库
+
+上面五步里的第 1、2 步（archetype、create-app）各自独立、互不知道对方的存在，第 3~5 步
+则完全靠开发者自己手工衔接。这暴露了一个更深的缺口：目标 #2「面向 AI 编程」、
+目标 #4「worktree 友好」、目标 #5「AI 自动化测试」在业务方这一侧从未有过交付物——
+此前这三个目标只体现在框架团队自己的验证载体（`sample-app`/`sample-frontend`）上，
+业务方拿到的只是一个能跑的后台，没有配套的 AI 工作目录、本地环境编排、可视化测试机制。
+
+`describeadmin/workspace` 仓库把这个缺口补上，作为业务方唯一需要知道的入口：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/describeadmin/workspace/main/init-workspace.sh \
+  | bash -s -- <workspace-name>
+```
+
+一条命令同时完成 9.5 的第 1、2 步，并额外生成：
+
+- 业务方视角的 `CLAUDE.md`（不是框架团队 `docs` 仓那份——那份讲插件作者规范、
+  发布治理，业务方用不上，是完全独立起草的文档）
+- `.claude/skills/dev-env`：本地开发环境一键拉起/销毁，支持多个 `git worktree`
+  并行开发各自独立（落地目标 #4）
+- `.claude/skills/visual-test`：AI Agent 直接用 chrome-devtools MCP 驱动浏览器 +
+  DB 查询做结构化断言，不写额外的测试运行时（落地目标 #5，设计取舍见第五章的
+  "不写解释器"原则——这条原则最初就是在给这个 skill 定型时确认下来的）
+- `.claude/skills/describe`：把「需求 + 参考材料 → 隔离的双 `git worktree` 沙箱 →
+  出计划待确认 → 自主实现 → 跑完整测试 → 动了前端就跑可视化测试 → 待合并报告」
+  编排成一条剧本，再加一个「用户验证无误后合并回两个子仓 + 清理 worktree」的入口
+  （把目标 #2「面向 AI 编程」、#4、#5 从「各有零件」变成「有端到端流程」）。
+  同样不写运行时——机械活（增删 worktree、合并回 base）在薄脚本 `describe.sh` 里，
+  判断活在 `SKILL.md`。`init-workspace.sh` 相应改为对两个子项目 `git init` + 首次提交
+  （archetype / create-app 都不建仓，而 worktree 能力以此为前提）
+- `.claude/skills/codegen`：写 YAML spec 生成一个业务模块的薄代码（9.4.2 的循环）。
+  它额外承担 9.4.3 说的「把生成器 fat jar 从 GitHub Release 取下来 + 校验 + 缓存到
+  `~/.describeadmin/codegen/<版本>/`」——这一步此前无人负责，`describe` 的自主实现阶段
+  会调用它。无配套脚本，步骤写在 `SKILL.md` 里
+
+`workspace` 仓库由框架团队维护、随 `repos.yml` 被 `clone-all.sh` 拉取，但它的**产出**
+（`CLAUDE.md`/`.claude/skills/`）走向的是业务方工作空间，不是框架团队自己用——这是它与
+`docs`/`codegen` 等仓库的本质区别：后两者的受众是框架团队自己或需要被依赖引用，
+前者的唯一职责是把文件铺进业务方的工作空间。
 
 ### 9.6 业务方升级时做什么
 
@@ -684,11 +785,18 @@ npm create @describeadmin/app <项目名>
 | ~~`describeadmin-archetype`~~ **已实现**（2026-08-20，待发布到 Central） | 阶段 0（与发布链路同期，它本身就要发布到 Central） |
 | `@describeadmin/system-ui`（前端系统管理收包） | 阶段 1（与 `framework-system-starter` 对称，宜同期完成） |
 | `npm create @describeadmin/app` | 阶段 1 |
-| `describeadmin-codegen-maven-plugin` | 阶段 1（codegen 本体已有，此处只是补交付形态） |
+| ~~`describeadmin-codegen-maven-plugin`~~ **放弃**（2026-08-28，见 9.4.1）——codegen 只做 fat jar，获取由 `codegen` skill 承担 | — |
+| `workspace` 仓库（`init-workspace.sh` + 业务方 `CLAUDE.md` + `dev-env`/`visual-test`/`describe`/`codegen` 四个 skill，9.5.1 / 9.4.3） | 阶段 1（依赖 archetype、create-app 已存在） |
 
 ***
 
 ## 十、实施路线图
+
+> ⚠️ **本章是 v0.4 的战略分期，不是进度表。**
+> 当前实际进展、各仓状态与下一步动作见 **[`PROGRESS.md`](./PROGRESS.md)**——
+> 那里才是收工时更新的地方。本章的阶段 -1 / 0 / 1 已完成，阶段 2 部分完成
+> （第一个官方插件已跑通，厂商插件未开始）。
+> 后续能力按能力规划的 A~G 分期推进，两套分期的合并尚未完成。
 
 不给出具体日期（取决于团队规模和投入节奏），按依赖关系给出建议顺序。每个阶段建议找一个真实业务方做小范围试点验证后再推广。
 
@@ -712,7 +820,7 @@ npm create @describeadmin/app <项目名>
 
 **阶段 0：基础设施骨架**
 
-多仓结构搭建与 `repos.yml`、CI 骨架（**含 5.7/8.4 双版本矩阵**）、`framework-bom`/父 POM（含 `maven-toolchains-plugin` 与 `maven.compiler.release=17`，见 2.2.2）、`toolchains.xml` 样例与说明、Vben fork 与 `packages/` 改造、打通 Maven Central 与 npm 发布链路（GPG 签名、Central Portal 的 `io.github.describeadmin` 命名空间验证）、**组织级** **`CLAUDE.md`** **与编码规范**（含 3.1.1 的包名规范、2.3.1 的 SQL 红线与主键策略）。
+多仓结构搭建与 `repos.yml`、CI 骨架（**含 5.7/8.4 双版本矩阵**）、`framework-bom`/父 POM（`maven.compiler.release=17` + enforcer `requireJavaVersion [17,)`，不再用 `maven-toolchains-plugin`，见 2.2.2「第八轮修订」）、Vben fork 与 `packages/` 改造、打通 Maven Central 与 npm 发布链路（GPG 签名、Central Portal 的 `io.github.describeadmin` 命名空间验证）、**组织级** **`CLAUDE.md`** **与编码规范**（含 3.1.1 的包名规范、2.3.1 的 SQL 红线与主键策略）。
 
 验收标准：空的登录+首页流程可跑通；占位包成功发布到 Maven Central 和 npm；双版本 CI 矩阵可用。
 
@@ -782,6 +890,7 @@ AI 自主测试存在误报/漏报的可能，尤其是纯视觉判断类场景�
 2. **发现并记录前端分层的不对称**：系统管理的后端已收回 `framework-system-starter`，前端页面（实测 1,376 行）却仍留在应用层，导致框架修复无法到达业务方。决定新增 `@describeadmin/system-ui`（9.3.1）。
 3. **补齐 4.1 未回答的问题**——业务方的应用外壳从何而来。决定由 `npm create @describeadmin/app` 生成，并如实记录"外壳不会自动升级"这一代价（9.3.2）。
 4. **明确 codegen 的定位与交付形态**：独立成仓的依据是依赖方向；交付形态为 Maven 插件（主）+ fat jar（辅）；并规定其绝不作为业务方运行时依赖（9.4）。
+   &nbsp;&nbsp;&nbsp;&nbsp;↳ **2026-08-28 修订**：(a) 放弃 Maven 插件形态，codegen 只做可执行 fat jar，jar 的获取/校验/缓存由 `workspace` 仓的 `codegen` skill 承担（见 9.4.1、9.4.3）；(b) codegen 版本号与 `framework` 保持一致（独立成仓 ≠ 版本号独立），使「按框架版本取对应 codegen」可查表确定（见 9.4）。
 5. **接入不靠文档靠模板**：三个已实测的接入坑（发现 ②⑥⑧）改由 `describeadmin-archetype` 固化（9.2.2）。
 6. **4.3 前端版本表按 Vben 5.7.0 实际 catalog 修正**——该修正已在正文标注为 v0.5，此前未在本附录登记，此处补记。
 
@@ -829,7 +938,7 @@ AI 自主测试存在误报/漏报的可能，尤其是纯视觉判断类场景�
 | 事项                           | 结论                                                                                                                  | 核验状态                    |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | 组织 / 命名空间                    | `describeadmin`；groupId `io.github.describeadmin`，Java 包名 `io.github.describeadmin.*`，npm 组织 `@describeadmin`（已申请） | ✅ 全部落地                     |
-| Java 版本                      | 最低 **17**，构建用 21，`maven.compiler.release=17`                                                                        | ✅ 已核验（SB 3.5.16 基线为 17） |
+| Java 版本                      | 最低 **17**，构建 JDK ≥ 17 即可（不再用 toolchains），`maven.compiler.release=17`                                                | ✅ 已核验（SB 3.5.16 基线为 17） |
 | 主键策略                         | 默认数据库自增（`IdType.AUTO`），可配置切换雪花 ID                                                                                   | 已确认                     |
 | Spring Boot 版本               | **3.5.16**                                                                                                          | ✅ 已核验                   |
 | Spring Security              | 6.5.11                                                                                                              | ✅ 已核验                   |

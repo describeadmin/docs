@@ -28,7 +28,6 @@
 |---|---|---|
 | 前端脚手架 `npm create @describeadmin/app` | 没有生成应用外壳的命令 | **以 `frontend/apps/admin` 为起点复制** |
 | `@describeadmin/system-ui` | 系统管理四个页面还在应用外壳里，你会永久拥有这 1376 行，框架后续对它们的修复到不了你那里 | 暂时接受；升级路径见 §7 |
-| codegen 的 Maven 插件形态 | 只能 `java -jar`，写不进 `pom.xml` | 用 fat jar |
 
 也就是说：**后端已经是「一条命令生成空工程」，前端仍然是「以样例仓库为起点」。**
 两边不对称是当前的真实状态，不是本文的简化写法。
@@ -51,7 +50,7 @@
 >
 > | | 由什么决定 | 要求 |
 > |---|---|---|
-> | **编译**用的 JDK | 框架源码：`maven-toolchains-plugin`；业务工程：就是 Maven 自己那个 | 框架源码构建需 21；业务工程**不限**，见 §3 |
+> | **编译**用的 JDK | 就是 Maven 自己那个（框架源码与业务工程都不再配 toolchains） | **17+ 即可**，见 §3 |
 > | **Maven 进程本身**跑的 JDK | `JAVA_HOME` / `PATH` | **必须 17+** |
 >
 > 第二条常被忽略，但它会直接让构建失败：`spring-boot-maven-plugin` 的
@@ -76,8 +75,9 @@
 > export JAVA_HOME=/path/to/jdk17     # 不满足时这样改（Windows: $env:JAVA_HOME=...）
 > ```
 >
-> 只有你要**自己构建框架源码**时才需要额外配 toolchains；
-> 只是**使用**已发布的框架制品的话不需要。
+> 框架源码、插件仓、`codegen`、业务工程都**不再用 `maven-toolchains-plugin`**——
+> 只要 Maven 跑在 JDK 17+ 上就能构建，`release=17` 保证产物在 Java 17 上可运行。
+> （唯一例外是 `sample-app`，它刻意用 toolchains 钉 JDK 17 做最低版本验证。）
 
 ---
 
@@ -128,19 +128,23 @@ IDEA 里也有现成入口：新建项目 → Maven Archetype，填上面三个 
 `local` profile 监听 **8090**，每次启动执行建表与种子脚本。
 框架依赖从 Maven Central 拉取，**不需要你先构建 framework 源码**。
 
-跑起来之后确认一下：
+首次启动时 dev-seed 会创建管理员 `admin`，**口令随机生成**——看启动日志里
+`dev-seed 生成初始管理员` 那几行，或读项目根目录的 `.passwd` 文件（已被 `.gitignore` 忽略）。
+
+跑起来之后确认一下（`$(cat .passwd)` 从项目根读那个随机口令）：
 
 ```bash
 curl -s -X POST http://localhost:8090/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123"}'
+  -d "{\"username\":\"admin\",\"password\":\"$(cat .passwd)\"}"
 ```
 
 应当返回 `{"code":0,...}`，令牌在 **`data.token`**（不是 `accessToken`），
 同时 `data.user` 里带 `nickname` / `roles` / `permissions`。
 
-> **默认账号 `admin` / `admin123` 仅供本地开发。**
-> `local` profile 每次启动都会重放种子脚本，绝不能用于任何真实环境。
+> **`local` profile 用 dev-seed 建随机口令的管理员，仅供本地开发。**
+> 每次启动都会重放种子脚本，绝不能用于任何真实环境；真实环境不要打开
+> `describeadmin.system.dev-seed`。管理员为别人建号 / 重置密码后，对方首次登录会被要求先改密。
 
 ### 生成的工程里有什么
 
@@ -194,7 +198,7 @@ pnpm install
 pnpm dev            # http://localhost:5777
 ```
 
-浏览器打开 5777，用 `admin` / `admin123` 登录。
+浏览器打开 5777，用 `admin` + 后端 `.passwd` 里的随机口令登录（见上文）。
 
 前端**不带 mock**。用 mock 开发前端，等于把前后端契约不一致的问题
 全部推迟到联调阶段才暴露。dev server 默认代理到 `http://localhost:8090`，
@@ -252,11 +256,15 @@ pnpm dev            # http://localhost:5777
 ### 6.2 跑生成器
 
 从 [codegen 的 Release 页](https://github.com/describeadmin/codegen/releases)
-下载 `codegen.jar`：
+下载 `codegen.jar`——**取与你 `pom.xml` 里 `<describeadmin.version>` 同号的那个**
+（codegen 与框架同版本发布，生成的薄代码对应同号框架的基类契约）：
 
 ```bash
 java -jar codegen.jar codegen-specs/order.yaml --out .
 ```
+
+> 用 `workspace` 工作空间的话不用手动下——`codegen` skill 会按框架版本自动取、
+> 校验、缓存到 `~/.describeadmin/codegen/<版本>/`。
 
 一次产出两侧的东西：
 
