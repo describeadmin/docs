@@ -6,7 +6,48 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-29（新建 `framework-excel-starter` 插件仓：Excel 导入导出，基于 Apache Fesod 孵化版；门面 + `@ExcelResponse`/`@ExcelBody` 注解糖；42 个测试全绿；已登记 `repos.yml` / `registry.md`。见下方新增章节）**
+**最后更新：2026-08-31（0.2.0 正式版发布：framework 11 个坐标 + 4 个插件上 Maven Central，codegen v0.2.0 GitHub Release，frontend 30 个 `@describeadmin/*` 上 npm。见下方新增章节）**
+
+***
+
+## 2026-08-31：0.2.0 正式版发布
+
+0.1.0/0.1.1 只是跑通发布链路的占位版本；0.2.0 是**第一个带真实功能的正式版**，
+携带一批前端可见的 Breaking Change（服务端权限点真校验、`Long`→JSON 字符串、
+时间格式 `yyyy-MM-dd HH:mm:ss`、内嵌容器 Tomcat→Undertow、数据权限 / 字典 / 参数 /
+操作日志新表）。逐条见各仓 `CHANGELOG.md`。
+
+**发布结果**
+
+| 链路 | 目标 | 内容 | 状态 |
+|---|---|---|---|
+| Maven Central | `framework` | `framework-parent` + `framework-bom` + 8 模块 + `describeadmin-archetype`，全部 `0.2.0` | ✅ repo1 可解析 |
+| Maven Central | 4 个插件 | `framework-{cache-redis,auth-email,crypto,excel}-starter:0.2.0` | ✅ 随框架同批 |
+| GitHub Release | `codegen` | `v0.2.0`（`codegen.jar` + `.sha256`） | ✅ |
+| npm | `frontend` | 30 个 `@describeadmin/*`，锁步 `0.2.0`（含新增 `create-app` / `tailwind-config`） | ✅ 逐个核实 |
+
+**分支**：`docs` / `framework` / `codegen` / `frontend` / 4 个插件的 `0.2.0-dev` 已合并回
+`main`，`v0.2.0` tag 打在各仓 `main`。后续开发继续在 `0.2.0-dev`。
+
+**过程中修掉的发布门禁问题**（都是 `0.2.0-dev` 分支 CI 不覆盖、发布时才暴露的）：
+- frontend `cspell`：`system-ui` 的 `oper` / `depts` 术语未收录 → 加进 `cspell.json`。
+- `@describeadmin/create-app`（0.2.0 新增包）：随包的 `template/package.json` 带 `imports`
+  字段，publint(strict) 判定为 error → 模板清单改名 `template/_package.json`，
+  `generate.ts` 展开时落回 `package.json`（同 create-vite 的 `_gitignore` 手法）。
+- frontend 发布工作流「dist 非空」门禁：写死假设每个包都有 `dist/`，但
+  `@describeadmin/tailwind-config`（新增，被已发布的 `core-design` 依赖）刻意按
+  `files:["src"]` 发源码 → 门禁改为按 `package.json` 的 `files` 声明校验。
+- 4 个插件仓补齐 `.github/workflows/release.yml`（此前只有 `ci.yml`，且 auth-email / crypto
+  连 CI 都没有）。
+
+**发布机制备忘**（下次发版看这里）：
+- `maven-central` environment 在 `framework` / `codegen` 仓配了 Required reviewers
+  （`caojianfei`），推 tag 后需在 Actions 页批准；插件仓的同名 environment 没配审批人，
+  直接跑到「上传 draft」。
+- Central Portal `autoPublish=false`：每个部署（framework 一次 + 插件各一次）都要人工去
+  https://central.sonatype.com/publishing/deployments 点 Publish。codegen 无此环节。
+- npm 首发新包会撞限流；本次 30 个包一次发过，工作流的指数退避重试兜住了，
+  发布后「核实」步骤因 registry 读副本延迟误报过一次，隔几分钟自愈。
 
 ***
 
@@ -483,11 +524,16 @@ CHANGELOG：`framework`、`framework-cache-redis-starter` 均已补。
 
 ## ⚠️ 分支模型（2026-08-26 起生效，覆盖下面「五个 PR 待合并」一节）
 
+> **2026-08-31 更新**：0.2.0 发版时 `docs`/`framework`/`codegen`/`frontend`/4 个插件的
+> `0.2.0-dev` 已合并回 `main` 并打 `v0.2.0` tag。下面「main 保持不动」那条是 0.1.x 时期的
+> 说法，现已不成立——`main` = 已发布的正式版。**开发仍在 `0.2.0-dev` 进行**（下个版本
+> 再决定是继续用它还是开 `0.3.0-dev`）。`sample-app` / `sample-frontend` 的 `0.2.0-dev`
+> 也已合并 main（消费方依赖已对齐到 0.2.0）。
+
 - **主分支统一是 `main`**。此前 `framework-auth-email-starter`/`framework-crypto-starter`
   用的是 `master`，`sample-frontend`（无远端）也是 `master`，三者都已改名为 `main`；
   前两者的 GitHub 默认分支也已切到 `main`。
-- **`main` 保持不动**，仍指向已发布的 0.1.0/0.1.1——0.1.0 只是用来跑通 Maven Central/npm
-  发布流程的，不是正式版本，**不需要为它保留任何向后兼容代码或走 PR 合并**。
+- ~~**`main` 保持不动**，仍指向已发布的 0.1.0/0.1.1~~（见上方 2026-08-31 更新）。
 - **`0.2.0-dev` 是唯一的开发分支**，已从 `main` 建出并把当时各仓库存在的开发分支合并了
   进去（全部是 fast-forward 或干净合并，无冲突）。**后续所有开发都在 `0.2.0-dev` 上做**，
   不要再新建长期存在的功能分支。
@@ -550,18 +596,16 @@ Could not find artifact io.github.describeadmin:framework-bom:pom:0.2.0-SNAPSHOT
 
 ## 下一步（按依赖顺序）
 
-1. **合并 framework#1**，然后重跑 `sample-app` 与插件仓的 CI。
-   它是两件事的共同前提：那两个仓的 CI 转绿、插件能发 Central。
-   其余四个 PR 合并顺序不限。阶段 D\~F 已经在同一条分支
-   （`feat/0.2.0-permission-cache-plugin`）上跟着做完并验证过，不必单独等这一步——
-   合并后 D\~F 的改动自然一起进 main。**分支目前已积了 A\~F 六个阶段，别再让差距继续拉大，
-   合并 framework#1 后尽快切一次。**
-2. **阶段 H：厂商插件（浙政钉登录、钉钉推送）**。是当前分支尚未做的第一个阶段（原编号 G，
-   因 JSON 序列化那批插队而顺延），
-   需要新开插件仓（浙政钉登录用 `AuthProvider`、钉钉推送用阶段 F 刚交付的
-   `NotifyChannel`），按 `docs/registry.md` 的六步流程走，独立成仓、不进 framework reactor。
-3. **framework 0.2.0 发 Maven Central** → 之后插件才能跟着发。
-   顺序不可颠倒：插件 `import` 的 `framework-bom` 必须是 Central 上**真实存在**的已发布版本。
+> 1~3 项（合并 main、发 Central、发插件）**已于 2026-08-31 完成**，见顶部「0.2.0 正式版发布」章节。
+
+1. **阶段 H：厂商插件（浙政钉登录、钉钉推送）**。当前分支尚未做的第一个阶段（原编号 G，
+   因 JSON 序列化那批插队而顺延），需要新开插件仓（浙政钉登录用 `AuthProvider`、
+   钉钉推送用阶段 F 交付的 `NotifyChannel`），按 `docs/registry.md` 的六步流程走，
+   独立成仓、不进 framework reactor。发布时按 0.2.0 这次的插件流程（`release.yml` + tag +
+   Central Portal Publish）。
+2. **`docs/CLAUDE.md` 母本改动同步到 6 份子仓副本**（`framework` / `codegen` / 4 个插件），
+   当前无自动脚本，手工同步。
+3. 清理各仓已并入 `0.2.0-dev` 的长期功能分支（`feat/*` / `test/*` / `chore/sync-claude-md`）。
 
 ***
 

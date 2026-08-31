@@ -42,15 +42,22 @@ repos:
       - framework-web-starter
       - framework-security-starter
       - framework-mybatis-starter
-      - framework-system-starter      # 用户/角色/菜单/部门管理（建设中）
+      - framework-cache-starter        # CacheProvider 契约 + 零依赖内存实现
+      - framework-system-starter      # 用户/角色/菜单/部门/字典/参数/操作日志/数据权限
+      - framework-storage-starter      # StorageProvider 契约 + 本地磁盘实现
+      - framework-notify-starter       # NotifyChannel 契约 + NotifyDispatcher + 日志渠道
       - describeadmin-archetype       # 业务方后端工程脚手架（见 9.2.2）
     publishes:
+      - io.github.describeadmin:framework-parent   # BOM 有效 POM 解析需要它在 Central
       - io.github.describeadmin:framework-bom
       - io.github.describeadmin:framework-common
       - io.github.describeadmin:framework-web-starter
       - io.github.describeadmin:framework-security-starter
       - io.github.describeadmin:framework-mybatis-starter
+      - io.github.describeadmin:framework-cache-starter
       - io.github.describeadmin:framework-system-starter
+      - io.github.describeadmin:framework-storage-starter
+      - io.github.describeadmin:framework-notify-starter
       # 业务方 `mvn archetype:generate` 的入口（9.2.2）。
       # 与框架同仓发布、版本号保持一致——它生成的 POM 里写的就是框架版本。
       # 职责是把发现 ②⑤ 两个接入坑固化成默认正确的初始状态，使其对业务方不可见。
@@ -136,8 +143,7 @@ repos:
       ⚠️ framework-bom 【不仲裁】本插件的版本：插件有自己的版本线，
       让 BOM 按框架版本去解析插件，业务方会拿到一个根本不存在的制品。引用时须显式写版本号。
     publishes:
-      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Central 后才能发本插件 ——
-      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      # 0.2.0 已发布到 Maven Central（2026-08-31，随 framework 0.2.0 同批）。
       - io.github.describeadmin:framework-cache-redis-starter
 
   - name: framework-auth-email-starter
@@ -154,6 +160,9 @@ repos:
       先发到 Central，本插件 import 的 framework-bom 才有一个真实存在的版本可引用。
       已应用到 sample-app（本地 mvn install -Dgpg.skip=true 装进 .m2）+ sample-frontend，
       chrome-devtools 走过完整的发码→MailHog 收码→登录成功链路。
+    publishes:
+      # 0.2.0 已发布到 Maven Central（2026-08-31，随 framework 0.2.0 同批）。
+      - io.github.describeadmin:framework-auth-email-starter
 
   - name: framework-crypto-starter
     group: ext
@@ -176,8 +185,7 @@ repos:
       对 SELECT 生效必须配合实体上的 @TableName(autoResultMap = true)，缺了不报错只是
       查出来的是密文——已写进插件 README 与 EncryptedStringTypeHandler 的 javadoc。
     publishes:
-      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Central 后才能发本插件 ——
-      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      # 0.2.0 已发布到 Maven Central（2026-08-31，随 framework 0.2.0 同批）。
       - io.github.describeadmin:framework-crypto-starter
 
   - name: framework-excel-starter
@@ -204,8 +212,7 @@ repos:
       许可审查（已写进 README 兼容性小节与 registry.md）。
       POM 不继承 framework-parent，import framework-bom。42 个测试全绿，无需 Docker。
     publishes:
-      # ⚠️ 尚未发布。等 framework 0.2.0 发到 Maven Central 后才能发本插件 ——
-      #    插件 import 的 framework-bom 必须是一个真实存在的已发布版本。
+      # 0.2.0 已发布到 Maven Central（2026-08-31，随 framework 0.2.0 同批）。
       - io.github.describeadmin:framework-excel-starter
 
   - name: framework-auth-zhengwuding-starter
@@ -239,21 +246,21 @@ repos:
       ⚠️ apps/admin 自 2026-08-21 起【不再是业务方的接入起点】（与 sample-app 同一时点的
       同一类调整）——那是 @describeadmin/create-app 的职责，见该包 README。
     publishes:
-      # ⚠️ 尚未发布到 npm registry。这些包已具备 publishConfig/files/exports 与 tsdown
-      #    构建产物，结构上 publish-ready，但发布链路（changeset publish）尚未打通——
-      #    本地验证改用 `pnpm pack` + file: 依赖，见 sample-frontend 仓。
+      # 0.1.0 起发布到 npm registry。全部非 private 的 @describeadmin/* 包按
+      # .changeset/config.json 的 fixed 分组【锁步同版本】发布，当前 0.2.0，共 30 个。
+      # 逐个枚举意义不大（改一个包就得改这里），下面只列几个业务方直接依赖的入口，
+      # 完整清单以 `pnpm ls -r --depth -1` 中 name 以 @describeadmin/ 开头且非 private 者为准。
       - "@describeadmin/ui"
       - "@describeadmin/layouts"
       - "@describeadmin/access"
       - "@describeadmin/request"
-      # ~~planned（9.3.1）~~ 已实现（2026-08-21）：系统管理四页面 + 首页统计卡片
-      # （原 1,376 行 + dashboard）已收进本包，与后端 framework-system-starter 对称。
-      # apps/admin 现在反过来消费本包（workspace:*），验证"框架自己也吃自己的狗粮"。
+      # 系统管理四页面 + 首页统计卡片，与后端 framework-system-starter 对称。
       - "@describeadmin/system-ui"
-      # ~~planned（9.3.2）~~ 已实现（2026-08-21）：`npm create @describeadmin/app` 的
-      # 实现包，template/ 是收走 system-ui 后 apps/admin 外壳的裁剪副本（手工维护同步，
-      # 见包内 README）。已用它生成 sample-frontend 并跑通登录 + 系统管理 CRUD 全链路。
+      # `npm create @describeadmin/app` 的实现包；template/_package.json 是收走
+      # system-ui 后 apps/admin 外壳的裁剪副本（手工维护同步，见包内 README）。
       - "@describeadmin/create-app"
+      # 其余 24 个（core-* 全套、constants、icons、locales、preferences、stores、
+      # styles、types、utils、hooks、plugins、ele-ui、tailwind-config 等）随同版本发布。
 
   # ---------- 样板 / 验证 ----------
   - name: sample-app
