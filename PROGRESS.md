@@ -6,9 +6,69 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-31（0.2.0 正式版发布：framework 11 个坐标 + 4 个插件上 Maven Central，codegen v0.2.0 GitHub Release，frontend 30 个 `@describeadmin/*` 上 npm。见下方新增章节）**
+**最后更新：2026-09-01（新增 `framework-storage-s3-starter` 插件仓，本地建仓完成、27 个测试全绿，
+Testcontainers MinIO + 外部 RustFS 双后端验证；未推远端、未发布 Central。见下方新增章节）**
 
 ***
+
+## 2026-09-01 追加：`framework-storage-s3-starter` 插件仓
+
+第一个**存储层**插件。`framework-storage-starter` 0.2.0 已给出 `StorageProvider` 契约 +
+零依赖的 `LocalFileStorageProvider`，本插件把它切到 S3 / S3 兼容对象存储——与
+`framework-cache-redis-starter` 之于 `CacheProvider` 是同一种关系。
+
+**交付（新仓 `framework-storage-s3-starter`，`0.2.0`，本地建仓 `main` + `0.2.0-dev`，未推远端）**：
+
+- **底层库**：AWS SDK for Java v2 `software.amazon.awssdk:s3:2.54.9`（import `awssdk:bom`）。
+  固定 `url-connection-client` 为唯一 HTTP 实现，**排除 `apache5-client`（2.54 起 s3 默认拖进的，
+  → httpclient5）/ `apache-client` / `netty-nio-client`**——两个实现同时在 classpath 上，
+  SDK 建 client 时抛 `Multiple HTTP implementations found`，且报错不指向 pom。enforcer 加了
+  第 4 条 `bannedDependencies` 兜这条 + CI 一步 `dependency:tree` grep。
+- **`core/S3StorageProvider`**：实现 `StorageProvider` 六个方法。key 格式校验与
+  `LocalFileStorageProvider` 完全一致（拒绝 `..` / 前导分隔符 / 反斜杠 / 盘符；读方法按未命中处理）。
+  `presignedUrl` 用 `S3Presigner` 出真实签名地址。`createBucketIfMissing()` 是唯一会在启动期
+  碰网络的路径，仅 `auto-create-bucket=true` 时调。
+- **`autoconfigure/`**：`FrameworkStorageS3AutoConfiguration`——`@AutoConfiguration(before =
+  FrameworkStorageAutoConfiguration.class)`（硬依赖直接引类；**无 optional 依赖，故没有
+  `beforeName` 字符串形式**，与 cache-redis 不同）。`S3Client` / `S3Presigner` / `StorageProvider`
+  三个 Bean 全 `@ConditionalOnMissingBean`。`@ConditionalOnProperty(...enabled, matchIfMissing=true)`。
+  构造函数里 `FrameworkVersion.requireCompatible`。`FrameworkStorageS3Properties`
+  （`describeadmin.storage.s3`：endpoint/region/access-key/secret-key/bucket/path-style-access
+  默认 `true`/key-prefix/public-url-base/auto-create-bucket 默认 `false`）。
+- **显式加 `framework-common` 为 compile 依赖**：`FrameworkVersion` 在它里面，而
+  `framework-storage-starter` 不传递依赖它（cache-redis 靠 provided 的 security-starter 捎带，
+  那条链很脆）。
+- **校验和坑**：AWS SDK v2 自 2.30 默认对 `PutObject`/`DeleteObjects` 发
+  `x-amz-checksum-crc32` 而非 `Content-MD5`，较老的 S3 兼容实现（本测试用的 MinIO 镜像、
+  Ceph RGW 等）不认，400 `Missing required header ... Content-Md5`。客户端 builder 上
+  `requestChecksumCalculation(WHEN_REQUIRED)` + `responseChecksumValidation(WHEN_REQUIRED)`
+  退回 2.30 前行为，对真 AWS S3 也安全。已写进 README + CHANGELOG。
+- **一处有意的行为差异**（已写进 README + 测试断言，对应准入规范第 9 条）：`put` 的 `size` 参数，
+  本地实现忽略它按落盘字节数纠正，S3 在 `size>0` 时把它当真实 `Content-Length` 走流式上传，
+  对不上直接失败；需要"大小未知"语义传 `size<=0`（会先把整个流缓冲进内存）。
+- **测试 27 个全绿**：
+  - `FrameworkStorageS3AutoConfigurationTest`（8 个，`ApplicationContextRunner` +
+    `AutoConfigurations.of` 真实排序）：版本自检自洽 / 旧框架 fail-fast / 插件接管
+    `StorageProvider` / 接管后端到端写进对象存储 / `enabled=false` 退回
+    `LocalFileStorageProvider` 且不建 `S3Client` / 业务方 Bean 优先 / 业务方自带 `S3Client`
+    被沿用 / `auto-create-bucket=true` 建桶。
+  - `S3StorageProviderTest`（19 个，对齐 `LocalFileStorageProviderTest` 结构）：中文内容值断言
+    往返、流式 vs 缓冲上传、contentType 持久化、`url()` 拼接、**预签名 URL 用 `java.net.http`
+    真实 GET 下载并比对内容**、未命中返回空、exists 随 put/remove 变、remove 幂等、覆盖语义、
+    键前缀（真实对象键带前缀而回调 key 不带）、非法 key 的写拒绝 / 读按未命中、预签名负有效期拒绝。
+  - `AbstractS3Test`：默认 Testcontainers `MinIOContainer`（镜像钉版本）；
+    `-Ds3.endpoint=http://localhost:9000 -Ds3.access-key=rustfsadmin -Ds3.secret-key=rustfsadmin`
+    可跳过容器指向外部 RustFS——**两个后端都已跑通全部 27 个用例**。
+- 根文件照抄 `framework-cache-redis-starter`（`LICENSE`/`NOTICE`/`.gitattributes`/`.gitignore`/
+  `CLAUDE.md` 副本）。`.github/workflows/ci.yml` 带框架版本矩阵 + 字节码 61 校验 + 无 JDBC +
+  单一 AWS HTTP 实现 + 无 Jackson 3 四道守卫；`release.yml` 由 cache-redis 的 `sed` 改名而来。
+  `mvn clean verify -Prelease -Dgpg.skip=true` 产出 sources/javadoc jar，enforcer 5 条全过。
+- 已登记 `docs/repos.yml`（group `ext`，status active）+ `docs/registry.md`（现有插件表加一行，
+  状态"本地建仓完成，待推远端 / 发布"）。
+
+**未做**：远端建仓与推送（等人工确认）；发布到 Central（须走 `docs/RELEASE.md`，且
+`framework-storage-starter:0.2.0` 已在 Central，依赖可解析）；`sample-app` 端到端集成
+（可选，加临时 Controller 走 RustFS 往返）。
 
 ## 2026-08-31：0.2.0 正式版发布
 
