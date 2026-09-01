@@ -239,7 +239,7 @@ repos:
       也可 -Ds3.endpoint=... 指向外部 RustFS（两个后端都已验证）。
       POM 不继承 framework-parent，import framework-bom。
     publishes:
-      # 本地建仓完成（0.2.0，main + 0.2.0-dev 分支），尚未推远端、尚未发布 Central。
+      # 2026-09-01 建远端仓、tag v0.2.0 触发 release，制品已上传 Central Portal draft，待手动 Publish。
       - io.github.describeadmin:framework-storage-s3-starter
 
   - name: framework-auth-zhengwuding-starter

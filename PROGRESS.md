@@ -6,8 +6,9 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-01（新增 `framework-storage-s3-starter` 插件仓，本地建仓完成、27 个测试全绿，
-Testcontainers MinIO + 外部 RustFS 双后端验证；未推远端、未发布 Central。见下方新增章节）**
+**最后更新：2026-09-01（`framework-storage-s3-starter` 已建远端仓、合并 `main`、打 tag `v0.2.0`
+触发 release 工作流，制品已上传 Central Portal draft，待按 `RELEASE.md` §4.2 d 手动 Publish。
+先前的 `sample-app` + `sample-frontend` 端到端集成验证见下方 2026-09-01 章节）**
 
 ***
 
@@ -66,9 +67,69 @@ Testcontainers MinIO + 外部 RustFS 双后端验证；未推远端、未发布 
 - 已登记 `docs/repos.yml`（group `ext`，status active）+ `docs/registry.md`（现有插件表加一行，
   状态"本地建仓完成，待推远端 / 发布"）。
 
-**未做**：远端建仓与推送（等人工确认）；发布到 Central（须走 `docs/RELEASE.md`，且
-`framework-storage-starter:0.2.0` 已在 Central，依赖可解析）；`sample-app` 端到端集成
-（可选，加临时 Controller 走 RustFS 往返）。
+**已完成（2026-09-01 收口，见下方「发布」章节）**：远端建仓、合并 `main`、tag `v0.2.0`、
+release 工作流跑绿、制品上传 Central Portal draft。
+
+## 2026-09-01 追加：`framework-storage-s3-starter` 发布 0.2.0
+
+- `gh repo create describeadmin/framework-storage-s3-starter --public`；`origin` 指向
+  `git@github.com:describeadmin/framework-storage-s3-starter.git`。
+- CHANGELOG `## 0.2.0 (未发布)` → `(2026-09-01)`，提交 `release: 0.2.0` 到 `0.2.0-dev`。
+- `0.2.0-dev` fast-forward 合并进 `main`；两分支 + tag `v0.2.0` 均已推远端。默认分支 `main`。
+- tag 触发 `release.yml`：校验 tag/POM 一致 + framework-bom 非 SNAPSHOT → `verify -Prelease`
+  （GPG 签名 + 27 测试）→ 上传 Central Portal **draft**。`maven-central` environment 本仓
+  未配审批人（同其它插件仓），直接跑到上传。CI 亦跑绿。
+- 组织级 Secrets（`CENTRAL_TOKEN_*` / `GPG_*`）对新仓自动可用，无需单独配。
+- **待人工**：去 <https://central.sonatype.com/publishing/deployments> 核对坐标后点 Publish
+  （`autoPublish=false`）。发布后 `curl https://repo1.maven.org/maven2/io/github/describeadmin/framework-storage-s3-starter/maven-metadata.xml` 核实。
+
+## 2026-09-01 追加：`framework-storage-s3-starter` 在 sample-app + sample-frontend 端到端集成
+
+把插件装到本地仓库并在样板工程里跑通一整条上传/回显链路，验证「业务方引入即用、
+业务代码只依赖 `StorageProvider` 契约」这个承诺成立。
+
+**装本地仓库**：`mvn -f framework-storage-s3-starter/pom.xml clean install -DskipTests`
+（27 个测试此前已全绿，装包只为让 `sample-app` 能解析到 `0.2.0`）。
+
+**sample-app（本地改动，未提交）**：
+
+- `pom.xml`：加 `framework-storage-s3-starter:0.2.0` 依赖（显式写版本号——`framework-bom`
+  不仲裁插件版本，与 cache-redis / auth-email / crypto 同一姿势）。
+- `application-local.yml`：加 `describeadmin.storage.s3`（`enabled: true`、`endpoint:
+  http://localhost:9000`、`access-key/secret-key: rustfsadmin`、`bucket: sample-app`、
+  `path-style-access: true`、`auto-create-bucket: true`）——本地联调指向已在跑的 RustFS 容器。
+  改 `enabled: false` 即退回 `LocalFileStorageProvider`。
+- 新增 `io.github.describeadmin.sample.file.FileStorageController`（**普通 `@RestController`，
+  不继承 `BaseController`**）：注入 `StorageProvider`，`POST /api/sample/file/upload`（multipart）
+  → `put` + `presignedUrl(1h)`；`GET /list`（内存里最近 50 条，重启即空）；`GET /presign`
+  重签；`DELETE` 删对象。权限点 `sample:file:{list,add,remove}` 走 `@PreAuthorize`，
+  由新增的 `db/menu-biz_file.sql` 登记并授予 ADMIN（手写，非 codegen）。
+- `application-local.yml` 的 `spring.sql.init.data-locations` 追加 `classpath:db/menu-biz_file.sql`。
+
+**sample-frontend（本地改动，未提交）**：
+
+- `src/api/file.ts`：`uploadFileApi`（走 `requestClient.upload`，字段名 `file`）/ `listFilesApi`
+  / `presignFileApi` / `deleteFileApi`。
+- `src/views/sample-file/index.vue`：选择文件 → 上传 → 「最近上传的回显」区用后端下发的预签名
+  地址 `<ElImage>` 直接渲染（RustFS 私有桶，`presignedUrl` 才是可访问地址）；下方表格列出本次
+  运行期上传过的文件，带「打开 / 刷新地址 / 删除」。全部交互元素带 `data-testid`（`sample-file-*`）。
+- accessMode = backend，页面靠 `menu-biz_file.sql` 的 `component = 'sample-file/index'` 下发，
+  无需改前端路由文件。
+
+**验证（chrome-devtools 实测，后端临时跑在 8091、前端 5174，避开用户自己在 8090/5173 的实例，
+测完已按 PID 关掉自己起的两个进程）**：
+
+- 后端 curl 直测：登录 → 上传 1×1 PNG → RustFS 里出现对象、返回预签名 URL → 直接 GET 该 URL
+  200 且字节与源文件逐字节一致 → `remove` 后 `exists` 返回 false（`/presign` 报 40400）。
+- 前端浏览器实测：登录 admin → 侧边栏「业务管理 / 文件存储」→ 选一张绿色 PNG 上传 →
+  回显区绿色图片正常渲染（跨源加载 `localhost:9000` 的预签名地址，`<img>` 无需 CORS）→
+  表格新增一行 → 点「删除」确认 → 行消失、后端对象也被删。控制台无 error / warn。
+- `auto-create-bucket: true` 首次启动自动建了 `sample-app` 桶；校验和头没踩坑（插件已把
+  `requestChecksumCalculation` 退回 `WHEN_REQUIRED`，RustFS 认 Content-MD5）。
+
+**未做**：改动只在本地，未提交（`sample-app` / `sample-frontend` 各自 `0.2.0-dev`）；
+`apps/admin` / `create-app` 模板**刻意不动**——这是 sample 层的演示页（与 employee/nurse 同级），
+不是框架能力，不该下沉。RustFS 里留了一个 `upload-test.png` 测试对象，无害。
 
 ## 2026-08-31：0.2.0 正式版发布
 
