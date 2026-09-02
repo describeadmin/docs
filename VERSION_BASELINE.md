@@ -70,6 +70,7 @@
 | Logback / SLF4J | 1.5.34 / 2.0.18 | 同上 |
 | MyBatis-Plus | **3.5.17**（`com.baomidou:mybatis-plus-spring-boot3-starter`） | repo1，2026-07-08 |
 | MySQL JDBC | **由业务方声明**；`framework-bom` 默认值 **8.2.0**（5.7-safe，可覆盖） | 见冲突 A |
+| Lombok | 1.18.46 | 由 spring-boot-dependencies 3.5.16 管理；**框架侧不单独 pin**（`framework-parent`/`framework-bom` 都不声明它）。只有 codegen 生成物用，那份依赖由 `describeadmin-archetype` 写进业务方 pom（`optional`，不写版本）。曾被移除又收窄回归的经过见 `PROGRESS.md` 2026-09-01 两节 |
 
 ### 前端（Vben Admin 5.7.0 + Element Plus）
 

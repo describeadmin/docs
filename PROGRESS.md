@@ -6,9 +6,246 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-08-31（0.2.0 正式版发布：framework 11 个坐标 + 4 个插件上 Maven Central，codegen v0.2.0 GitHub Release，frontend 30 个 `@describeadmin/*` 上 npm。见下方新增章节）**
+**最后更新：2026-09-02（`framework` / `codegen` / `frontend` 三仓 `0.2.1-dev` squash 并入
+`main` 并发 `0.2.1`，三条链路全部完成：framework 10 个制品已上 Maven Central（repo1 可拉）、
+codegen GitHub Release 已建、frontend 30 个包已上 npm。三仓本地 dev 分支已删。见下方
+2026-09-02 章节。更早：Lombok 回归——只用于 codegen 生成物）**
 
 ***
+
+## 2026-09-02：0.2.1 发布
+
+`framework` / `codegen` / `frontend` 三仓 `0.2.1-dev` 各自 `git merge --squash` 并入 `main`
+（一个 squash 提交 + 一个 `release: 0.2.1` 提交），打 tag `v0.2.1` 推远端触发 release 工作流。
+三仓的 dev 分支从未推远端，合并后本地删除。
+
+**内容**（0.2.0 → 0.2.1，均不破坏 `api/` 兼容承诺）：
+
+- `framework`：`api/BaseController` 新增 6 个列表取参方法 `text`/`as{Int,Long,Decimal,Date,DateTime}`；
+  `framework-parent` 不再声明 lombok / `annotationProcessorPaths`；archetype 模板预置
+  `lombok`（optional）；字典 `GET /system/dict/data/type/{dictType}` 降为仅需登录。
+- `codegen`：生成物 Entity 用 `@Getter/@Setter`、Controller 用 `@RequiredArgsConstructor`；
+  列表取参不再逐 Controller 内联，改调框架基类（**生成物需搭配 framework ≥ 0.2.1**）。
+- `frontend`：`check:consumer-type` 消费侧类型检查接入 release CI；`accessible.ts` 显式返回类型修正；
+  `create-app` `_gitignore` 模板重命名修正。41 个 workspace 包 + 根 `package.json` → `0.2.1`。
+
+**发布结果**：
+
+- `framework` → release 工作流绿（构建 + GPG 签名 + 三件套校验 + 上传 Central Portal draft），
+  已手动 Publish。10 个制品（8 starter + `framework-common` + `describeadmin-archetype`）在
+  repo1 均可拉，`framework-bom` metadata `<release>0.2.1`。**完成**。
+- `codegen` → GitHub Release `v0.2.1` 已建，附 `codegen.jar` + `.sha256`，`java -jar` 中文断言通过。**完成**。
+- `frontend` → 30 个可发布包全部上 npm `0.2.1`，tarball 非空（逐个 `npm view` 核实过）。**完成**。
+  工作流「核实」步骤报红是 `npm view` 抢在 registry 传播完成前读到空——`pnpm publish` 日志对
+  30 个包全部 `✅ Published`，非半发布，无需补跑。
+
+**docs 仓未处理**：`docs` 自己的 `0.2.1-dev`（4 个提交：lombok 范围规范、PROGRESS、
+s3-starter 登记）尚未并入 `main`——本次任务只覆盖三仓，docs 待单独收口。
+
+***
+
+## 2026-09-01 追加：Lombok 回归（只用于 codegen 生成物）
+
+复议上一节的「移除 lombok」：结论不是"框架错了要全撤"，而是把边界收窄到**生成物**。
+
+**背景**：codegen 产出的 Entity 逐字段手写 getter/setter、Controller 手写 `private final`
+字段 + 注入构造器，是没人维护的机械样板。而「换新 JDK 可能编不过」这条顾虑针对的是
+**构建 framework 本身**——生成物是在业务方的构建链上编译的，那条链的 JDK 由业务方掌控。
+所以：框架自身源码继续不用 lombok，只让生成物用，依赖由框架侧的 archetype 交付。
+
+**改了什么**
+
+- `codegen` `JavaGenerator`：Entity 模板去掉 `accessors` 块，类上加 `@Getter` / `@Setter`；
+  Controller 模板去掉手写构造器，类上加 `@RequiredArgsConstructor`（保留 `private final`
+  字段、`getService()`、`permPrefix()`）。删了只被 accessor 模板用的 `FieldSpec.capitalized()`。
+- `codegen` `GeneratorTest`：`entityIsThin` 补断言、新增 `entityUsesLombokAccessors`、
+  `controller` 补 `@RequiredArgsConstructor` 断言。全量 53 测试绿。
+- `framework/describeadmin-archetype/.../archetype-resources/pom.xml`：新增
+  `org.projectlombok:lombok`（`<optional>true</optional>`，不写版本，由 spring-boot-dependencies
+  仲裁为 1.18.46）。不配 `annotationProcessorPaths`——javac 从 classpath SPI 自动发现。
+- `framework/pom.xml`、`framework/framework-bom/pom.xml`：仅改注释，把「刻意不引 lombok」
+  的口径更新为「框架源码不用、生成物用、BOM 不仲裁」。**编译链与制品字节不变。**
+- `sample-app`：`pom.xml` 加 lombok 依赖；`project` 模块用新 codegen `--force` 重生成；
+  `EmployeeEntity` / `EmployeeController` / `NurseEntity` / `NurseController`（都是"生成后
+  手工补加密/盲索引"的样本）手工改用 `@Getter/@Setter` + `@RequiredArgsConstructor`，
+  盲索引字段用 `@Setter(AccessLevel.NONE)` + 字段级 `@JsonIgnore` 保留"无 setter、不下发"
+  的原设计。
+- 文档：`CLAUDE.md` 新增 §4.10（母本 + 11 份副本，`workspace/` 那份是另一篇不动）；
+  `develop_plan.md` §3.3、`registry.md`「拆仓白送依赖」段、`VERSION_BASELINE.md` 同步。
+
+**验证**：`codegen` 53 测试绿；`framework` `install`（skipTests）绿，POM 仅注释变化；
+`sample-app` `clean test-compile` 绿，`javap` 确认 `ProjectEntity` 的 getter/setter 由
+lombok 生成、`NurseEntity` 无 `setMobileIdx`；`dependency:tree` 确认 lombok 为
+`compile (optional)`、不传递。
+
+**升级提示**：已发布/已生成的业务工程若用新版 codegen 重生成代码，需在自己 `pom.xml`
+补一行 `org.projectlombok:lombok`（`optional`，不写版本），否则生成物编译不过。
+
+***
+
+## 2026-09-01 追加：移除 lombok + 列表取参方法上移基类
+
+两处独立改动，都在 `framework` + `codegen`（未推远端）。
+
+**1. `framework` 移除 lombok 依赖**
+
+`framework-parent` 里 lombok 是 `optional` 依赖 + 配了 `annotationProcessorPaths`，但全仓
+0 处使用（`SysUser` 等实体一律手写访问器，日志用 `LoggerFactory` 不用 `@Slf4j`）。理由见
+CLAUDE.md 4.7：注解处理器绑 javac 内部 API，是"换新 JDK 可能编不过"的变量，与"任意
+JDK ≥ 17 都能直接构建"冲突；对生成代码是负收益。业务方要用自行引。
+
+- `framework/pom.xml`：删 `<lombok.version>` 属性、`<dependencies>` 里的 optional 条目、
+  compiler 插件的 `<annotationProcessorPaths>`。原位留注释说明为何不引。
+- `framework/framework-bom/pom.xml`：两处解释性注释里的 "（lombok / spring-boot-starter-test）"
+  改为 "（spring-boot-starter-test）"。
+- `framework-excel-starter/pom.xml` 有一处 lombok 注释（说明不 import fesod-bom 的原因），
+  是另一个独立仓、且 spring-boot-dependencies 仍仲裁 lombok 版本，注释仍准确，未动。
+
+**2. 列表查询取参方法（`text` / `asInt` / `asLong` / `asDecimal` / `asDate` / `asDateTime`）上移**
+
+原先 codegen 把这几个私有静态方法**内联进每个带查询条件的 Controller**，去重只在单个
+Controller 内生效——N 个模块 = N 份字节级相同的解析代码，违背 4.1「薄代码」。
+「空串按未填」「解析失败返回 400」是框架固化的语义口径，属 4.7 说该进核心的那类。
+
+- `framework-mybatis-starter` `api/BaseController`：新增 6 个 `protected static` 方法
+  （`text` + 5 个 `asXxx`，共用私有 `parseParam(Function)`）。属兼容面。
+- `codegen` `JavaGenerator`：`listMethod` 不再生成 `text()` 与各 `asXxx()`，只生成
+  `buildListWrapper` 方法体；`controller()` 的 import 集合去掉 `BizException`/`ResultCode`
+  和按字段类型追加 import 的循环；`condition()` 去掉 `parsers` 线程参数，删 `parserFor()`。
+- `GeneratorTest`：`malformedQueryParamIsClientError` + `parsersAreDeduplicated` 两条重写为
+  `parsersAreDelegatedToBaseController`（断言生成物调用继承方法、不再内联、不 import
+  `BizException`）。新增 `BaseControllerListParamsTest`（7 个）覆盖空串语义 / 类型转换 /
+  非法值抛 `BizException(BAD_REQUEST)` / `asDateTime` 接受 T 与空格分隔。
+- `sample-app`：`ProjectController` / `EmployeeController` 用新 codegen `--force` 重生成，
+  `NurseController`（有手工加的盲索引搜索）手删 `text()` 方法、补 javadoc 一行。
+
+**验证**：`codegen` 52 测试绿；`framework` 全量测试绿（`LoginAttemptGuardTest` 里一条
+`Thread.sleep` 时间窗口断言在满载机器上偶发失败，与本次改动无关，单独重跑即过）；
+`framework` `install` 到本地仓后 `sample-app` `test-compile` 通过。
+
+**下一步**：`codegen-list-parser-duplication` 这条待办已完成，可从 memory 清掉。
+更大范围的 codegen 产物"变薄"（其它重复片段）仍是待讨论项。
+
+***
+
+## 2026-09-01 追加：`framework-storage-s3-starter` 插件仓
+
+第一个**存储层**插件。`framework-storage-starter` 0.2.0 已给出 `StorageProvider` 契约 +
+零依赖的 `LocalFileStorageProvider`，本插件把它切到 S3 / S3 兼容对象存储——与
+`framework-cache-redis-starter` 之于 `CacheProvider` 是同一种关系。
+
+**交付（新仓 `framework-storage-s3-starter`，`0.2.0`，本地建仓 `main` + `0.2.0-dev`，未推远端）**：
+
+- **底层库**：AWS SDK for Java v2 `software.amazon.awssdk:s3:2.54.9`（import `awssdk:bom`）。
+  固定 `url-connection-client` 为唯一 HTTP 实现，**排除 `apache5-client`（2.54 起 s3 默认拖进的，
+  → httpclient5）/ `apache-client` / `netty-nio-client`**——两个实现同时在 classpath 上，
+  SDK 建 client 时抛 `Multiple HTTP implementations found`，且报错不指向 pom。enforcer 加了
+  第 4 条 `bannedDependencies` 兜这条 + CI 一步 `dependency:tree` grep。
+- **`core/S3StorageProvider`**：实现 `StorageProvider` 六个方法。key 格式校验与
+  `LocalFileStorageProvider` 完全一致（拒绝 `..` / 前导分隔符 / 反斜杠 / 盘符；读方法按未命中处理）。
+  `presignedUrl` 用 `S3Presigner` 出真实签名地址。`createBucketIfMissing()` 是唯一会在启动期
+  碰网络的路径，仅 `auto-create-bucket=true` 时调。
+- **`autoconfigure/`**：`FrameworkStorageS3AutoConfiguration`——`@AutoConfiguration(before =
+  FrameworkStorageAutoConfiguration.class)`（硬依赖直接引类；**无 optional 依赖，故没有
+  `beforeName` 字符串形式**，与 cache-redis 不同）。`S3Client` / `S3Presigner` / `StorageProvider`
+  三个 Bean 全 `@ConditionalOnMissingBean`。`@ConditionalOnProperty(...enabled, matchIfMissing=true)`。
+  构造函数里 `FrameworkVersion.requireCompatible`。`FrameworkStorageS3Properties`
+  （`describeadmin.storage.s3`：endpoint/region/access-key/secret-key/bucket/path-style-access
+  默认 `true`/key-prefix/public-url-base/auto-create-bucket 默认 `false`）。
+- **显式加 `framework-common` 为 compile 依赖**：`FrameworkVersion` 在它里面，而
+  `framework-storage-starter` 不传递依赖它（cache-redis 靠 provided 的 security-starter 捎带，
+  那条链很脆）。
+- **校验和坑**：AWS SDK v2 自 2.30 默认对 `PutObject`/`DeleteObjects` 发
+  `x-amz-checksum-crc32` 而非 `Content-MD5`，较老的 S3 兼容实现（本测试用的 MinIO 镜像、
+  Ceph RGW 等）不认，400 `Missing required header ... Content-Md5`。客户端 builder 上
+  `requestChecksumCalculation(WHEN_REQUIRED)` + `responseChecksumValidation(WHEN_REQUIRED)`
+  退回 2.30 前行为，对真 AWS S3 也安全。已写进 README + CHANGELOG。
+- **一处有意的行为差异**（已写进 README + 测试断言，对应准入规范第 9 条）：`put` 的 `size` 参数，
+  本地实现忽略它按落盘字节数纠正，S3 在 `size>0` 时把它当真实 `Content-Length` 走流式上传，
+  对不上直接失败；需要"大小未知"语义传 `size<=0`（会先把整个流缓冲进内存）。
+- **测试 27 个全绿**：
+  - `FrameworkStorageS3AutoConfigurationTest`（8 个，`ApplicationContextRunner` +
+    `AutoConfigurations.of` 真实排序）：版本自检自洽 / 旧框架 fail-fast / 插件接管
+    `StorageProvider` / 接管后端到端写进对象存储 / `enabled=false` 退回
+    `LocalFileStorageProvider` 且不建 `S3Client` / 业务方 Bean 优先 / 业务方自带 `S3Client`
+    被沿用 / `auto-create-bucket=true` 建桶。
+  - `S3StorageProviderTest`（19 个，对齐 `LocalFileStorageProviderTest` 结构）：中文内容值断言
+    往返、流式 vs 缓冲上传、contentType 持久化、`url()` 拼接、**预签名 URL 用 `java.net.http`
+    真实 GET 下载并比对内容**、未命中返回空、exists 随 put/remove 变、remove 幂等、覆盖语义、
+    键前缀（真实对象键带前缀而回调 key 不带）、非法 key 的写拒绝 / 读按未命中、预签名负有效期拒绝。
+  - `AbstractS3Test`：默认 Testcontainers `MinIOContainer`（镜像钉版本）；
+    `-Ds3.endpoint=http://localhost:9000 -Ds3.access-key=rustfsadmin -Ds3.secret-key=rustfsadmin`
+    可跳过容器指向外部 RustFS——**两个后端都已跑通全部 27 个用例**。
+- 根文件照抄 `framework-cache-redis-starter`（`LICENSE`/`NOTICE`/`.gitattributes`/`.gitignore`/
+  `CLAUDE.md` 副本）。`.github/workflows/ci.yml` 带框架版本矩阵 + 字节码 61 校验 + 无 JDBC +
+  单一 AWS HTTP 实现 + 无 Jackson 3 四道守卫；`release.yml` 由 cache-redis 的 `sed` 改名而来。
+  `mvn clean verify -Prelease -Dgpg.skip=true` 产出 sources/javadoc jar，enforcer 5 条全过。
+- 已登记 `docs/repos.yml`（group `ext`，status active）+ `docs/registry.md`（现有插件表加一行，
+  状态"本地建仓完成，待推远端 / 发布"）。
+
+**已完成（2026-09-01 收口，见下方「发布」章节）**：远端建仓、合并 `main`、tag `v0.2.0`、
+release 工作流跑绿、制品上传 Central Portal draft。
+
+## 2026-09-01 追加：`framework-storage-s3-starter` 发布 0.2.0
+
+- `gh repo create describeadmin/framework-storage-s3-starter --public`；`origin` 指向
+  `git@github.com:describeadmin/framework-storage-s3-starter.git`。
+- CHANGELOG `## 0.2.0 (未发布)` → `(2026-09-01)`，提交 `release: 0.2.0` 到 `0.2.0-dev`。
+- `0.2.0-dev` fast-forward 合并进 `main`；两分支 + tag `v0.2.0` 均已推远端。默认分支 `main`。
+- tag 触发 `release.yml`：校验 tag/POM 一致 + framework-bom 非 SNAPSHOT → `verify -Prelease`
+  （GPG 签名 + 27 测试）→ 上传 Central Portal **draft**。`maven-central` environment 本仓
+  未配审批人（同其它插件仓），直接跑到上传。CI 亦跑绿。
+- 组织级 Secrets（`CENTRAL_TOKEN_*` / `GPG_*`）对新仓自动可用，无需单独配。
+- **待人工**：去 <https://central.sonatype.com/publishing/deployments> 核对坐标后点 Publish
+  （`autoPublish=false`）。发布后 `curl https://repo1.maven.org/maven2/io/github/describeadmin/framework-storage-s3-starter/maven-metadata.xml` 核实。
+
+## 2026-09-01 追加：`framework-storage-s3-starter` 在 sample-app + sample-frontend 端到端集成
+
+把插件装到本地仓库并在样板工程里跑通一整条上传/回显链路，验证「业务方引入即用、
+业务代码只依赖 `StorageProvider` 契约」这个承诺成立。
+
+**装本地仓库**：`mvn -f framework-storage-s3-starter/pom.xml clean install -DskipTests`
+（27 个测试此前已全绿，装包只为让 `sample-app` 能解析到 `0.2.0`）。
+
+**sample-app（本地改动，未提交）**：
+
+- `pom.xml`：加 `framework-storage-s3-starter:0.2.0` 依赖（显式写版本号——`framework-bom`
+  不仲裁插件版本，与 cache-redis / auth-email / crypto 同一姿势）。
+- `application-local.yml`：加 `describeadmin.storage.s3`（`enabled: true`、`endpoint:
+  http://localhost:9000`、`access-key/secret-key: rustfsadmin`、`bucket: sample-app`、
+  `path-style-access: true`、`auto-create-bucket: true`）——本地联调指向已在跑的 RustFS 容器。
+  改 `enabled: false` 即退回 `LocalFileStorageProvider`。
+- 新增 `io.github.describeadmin.sample.file.FileStorageController`（**普通 `@RestController`，
+  不继承 `BaseController`**）：注入 `StorageProvider`，`POST /api/sample/file/upload`（multipart）
+  → `put` + `presignedUrl(1h)`；`GET /list`（内存里最近 50 条，重启即空）；`GET /presign`
+  重签；`DELETE` 删对象。权限点 `sample:file:{list,add,remove}` 走 `@PreAuthorize`，
+  由新增的 `db/menu-biz_file.sql` 登记并授予 ADMIN（手写，非 codegen）。
+- `application-local.yml` 的 `spring.sql.init.data-locations` 追加 `classpath:db/menu-biz_file.sql`。
+
+**sample-frontend（本地改动，未提交）**：
+
+- `src/api/file.ts`：`uploadFileApi`（走 `requestClient.upload`，字段名 `file`）/ `listFilesApi`
+  / `presignFileApi` / `deleteFileApi`。
+- `src/views/sample-file/index.vue`：选择文件 → 上传 → 「最近上传的回显」区用后端下发的预签名
+  地址 `<ElImage>` 直接渲染（RustFS 私有桶，`presignedUrl` 才是可访问地址）；下方表格列出本次
+  运行期上传过的文件，带「打开 / 刷新地址 / 删除」。全部交互元素带 `data-testid`（`sample-file-*`）。
+- accessMode = backend，页面靠 `menu-biz_file.sql` 的 `component = 'sample-file/index'` 下发，
+  无需改前端路由文件。
+
+**验证（chrome-devtools 实测，后端临时跑在 8091、前端 5174，避开用户自己在 8090/5173 的实例，
+测完已按 PID 关掉自己起的两个进程）**：
+
+- 后端 curl 直测：登录 → 上传 1×1 PNG → RustFS 里出现对象、返回预签名 URL → 直接 GET 该 URL
+  200 且字节与源文件逐字节一致 → `remove` 后 `exists` 返回 false（`/presign` 报 40400）。
+- 前端浏览器实测：登录 admin → 侧边栏「业务管理 / 文件存储」→ 选一张绿色 PNG 上传 →
+  回显区绿色图片正常渲染（跨源加载 `localhost:9000` 的预签名地址，`<img>` 无需 CORS）→
+  表格新增一行 → 点「删除」确认 → 行消失、后端对象也被删。控制台无 error / warn。
+- `auto-create-bucket: true` 首次启动自动建了 `sample-app` 桶；校验和头没踩坑（插件已把
+  `requestChecksumCalculation` 退回 `WHEN_REQUIRED`，RustFS 认 Content-MD5）。
+
+**未做**：改动只在本地，未提交（`sample-app` / `sample-frontend` 各自 `0.2.0-dev`）；
+`apps/admin` / `create-app` 模板**刻意不动**——这是 sample 层的演示页（与 employee/nurse 同级），
+不是框架能力，不该下沉。RustFS 里留了一个 `upload-test.png` 测试对象，无害。
 
 ## 2026-08-31：0.2.0 正式版发布
 

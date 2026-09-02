@@ -315,6 +315,16 @@ public interface NotifyChannel {
 
 好处是框架升级大多数情况下改的是基类（属于 Platform 层，版本化发布），业务方生成的"薄"代码基本不需要跟着大改，从源头上减少了升级摩擦。
 
+**生成物用 Lombok，框架源码不用（2026-09 定）。** 生成的 Entity 用 `@Getter`/`@Setter`、
+Controller 用 `@RequiredArgsConstructor`，去掉逐字段的 getter/setter 与手写注入构造器——
+这些是没人维护的机械样板，正是"薄"的方向。而框架自身的 `BaseEntity`/各 starter/`SysUser`
+继续手写访问器：注解处理器绑 javac 内部非公开 API，是"换新 JDK 可能编不过"的变量，与
+「任意 JDK ≥ 17 都能直接构建**框架本身**」这条硬承诺冲突（同一理由见 2.2.2 弃用
+`maven-toolchains-plugin`）。两者不矛盾的关键在于**编译发生在哪条链上**：生成物在业务方
+工程里编译，那条链的 JDK 由业务方掌控，可自行钉版本；框架的构建链要对任意协作者/CI 的
+JDK 都成立。因此 Lombok 依赖由框架侧的 `describeadmin-archetype` 写进业务方 `pom.xml`
+（`optional`，版本由 `spring-boot-dependencies` 仲裁），`framework-bom` 不掺和。
+
 #### 3.3.1 输入形态：YAML/DSL 优先，而非直连数据库（v0.4 优先级调整）
 
 v0.3 把"以数据库表结构为输入"作为 v1 方案，"演进为 YAML/DSL 定义"列为后续演进。**在政务/国产化场景下这个优先级是错的，v0.4 予以调整：YAML/DSL 定义为 v1 的主输入形态。**

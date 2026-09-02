@@ -215,6 +215,33 @@ repos:
       # 0.2.0 已发布到 Maven Central（2026-08-31，随 framework 0.2.0 同批）。
       - io.github.describeadmin:framework-excel-starter
 
+  - name: framework-storage-s3-starter
+    group: ext
+    status: active
+    lang: java
+    spi: StorageProvider
+    desc: 把 StorageProvider 从本地磁盘切到 S3 / S3 兼容对象存储（AWS S3、MinIO、RustFS）
+    framework_min: "0.2.0"   # 用到 framework-storage-starter 0.2.0 的 StorageProvider 契约与 presignedUrl 扩展点
+    note: |
+      第一个存储层插件。基于 AWS SDK for Java v2（software.amazon.awssdk:s3），
+      固定用 url-connection-client 作唯一 HTTP 实现（排除 apache5-client/apache-client/
+      netty-nio-client —— 两个实现同时在 classpath 上，SDK 建 client 时会抛
+      "Multiple HTTP implementations found"）。
+      装配用 before = FrameworkStorageAutoConfiguration.class（硬依赖，直接引用类，
+      无 optional 依赖故无 beforeName 字符串形式）；全部 Bean @ConditionalOnMissingBean，
+      业务方自注册的 S3Client / StorageProvider 一定赢。
+      运行时开关 describeadmin.storage.s3.enabled，关掉后连 S3Client 都不建，
+      完全等同于没引这个 jar，框架退回 LocalFileStorageProvider。
+      客户端校验和策略退回 WHEN_REQUIRED（AWS SDK 2.30 起默认发 x-amz-checksum-crc32
+      而非 Content-MD5，老 S3 兼容实现不认会 400）。
+      27 个测试全绿：装配顺序（ApplicationContextRunner）+ 端到端读写 / 预签名 URL
+      真实 HTTP 下载 / key 校验 / 键前缀 / auto-create-bucket。默认用 Testcontainers MinIO，
+      也可 -Ds3.endpoint=... 指向外部 RustFS（两个后端都已验证）。
+      POM 不继承 framework-parent，import framework-bom。
+    publishes:
+      # 2026-09-01 建远端仓、tag v0.2.0 触发 release，制品已上传 Central Portal draft，待手动 Publish。
+      - io.github.describeadmin:framework-storage-s3-starter
+
   - name: framework-auth-zhengwuding-starter
     group: ext
     status: planned
