@@ -20,17 +20,23 @@
 `IllegalArgumentException`，该用户所有已认证请求整体 500（`/api/auth/me` 最先命中，
 前端表现为登录后白屏）。
 
-三层修复（都在 `framework`，`main` 已提交，**未发版**）：
+三层修复（都在 `framework`，`main` 已提交）：
 
 - `framework-security-starter`：`TokenAuthenticationFilter.authoritiesOf` 跳过空白角色/
   权限项；新增 `TokenAuthenticationFilterTest`（2 例）。
 - `framework-system-starter`：`SysRelationMapper.selectPermCodesByUserId` 加
   `TRIM(m.perm_code) <> ''`；`SysMenuService.save`/`updateById` 覆写，落库前把空白
   `permCode`/`icon` 归一为 `NULL`。
-- `CHANGELOG.md` 加 `## Unreleased` → Bug Fixes。
+- `CHANGELOG.md`：`## 0.2.2 (2026-09-03)` → Bug Fixes。
 
-既有脏数据无需迁移。**下一步**：跟随下次 `framework` 发版（预计 0.2.2 或 0.3.0）。
-frontend 菜单表单可选优化（提交时空串改 `null`/不传），非必需——服务端已是权威归一。
+**版本**：`framework` 全仓 `versions:set` 0.2.1 → **0.2.2**，已 `mvn install` 到本地
+`~/.m2`（11 个制品，`version=0.2.2` 已过滤进 `describeadmin-framework.properties`）。
+commit `c6d8b26`「release: 0.2.2（本地构建，未推远端）」。**未推 GitHub、未发 Central。**
+与 `codegen 0.2.2` 生成物逐字节兼容（追平到同号）。
+
+既有脏数据无需迁移。**下一步**：如需正式发布，按 `docs/RELEASE.md` 推 tag `v0.2.2` +
+过 `maven-central` 审批闸门。frontend 菜单表单可选优化（提交空串改 `null`/不传），
+非必需——服务端已是权威归一。
 
 ***
 
