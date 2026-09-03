@@ -259,7 +259,9 @@ git commit -am "release: <版本>" && git tag v<版本> && git push && git push 
 再创建 Release。只检查文件存在是不够的——shade 配置写错时 jar 照样产出，
 用户下载下来第一条命令才失败。
 
-发错了可以删 Release 重发，这条链路不需要审批闸门那么紧张。
+发错了可以删 Release 重发，这条链路不需要审批闸门那么紧张——
+**codegen 的 `release.yml` 已移除 `environment` 门禁**（2026-09-03，随 0.2.2），
+推 tag 即自动构建、校验、建 Release，无人工确认。§3.3 那道闸门只留给 framework 的 Central 发布。
 
 ## 4B. npm 发布（`@describeadmin/*`）
 
