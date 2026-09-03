@@ -6,10 +6,31 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-03（`codegen` 移除 `test-specs/*.yaml` 生成，**仅 codegen 发 `0.2.2`**
-——framework/frontend 无改动、破例不同号，见下方 2026-09-03 节。更早：2026-09-02
-`framework-excel-starter` 0.2.1 安全修复发布，`commons-lang3` 3.17.0 → 3.18.0 修
-CVE-2025-48924；`framework` / `codegen` / `frontend` 三仓发 `0.2.1`。见下方 2026-09-02 各节）**
+**最后更新：2026-09-03（`framework` 修空「权限标识」崩溃 bug，已提交 `main` 未发版，
+见下方 2026-09-03 节。更早：`codegen` 移除 `test-specs/*.yaml` 生成，**仅 codegen 发 `0.2.2`**
+——framework/frontend 无改动、破例不同号。再早：2026-09-02 `framework-excel-starter`
+0.2.1 安全修复，`framework` / `codegen` / `frontend` 三仓发 `0.2.1`。见下方各节）**
+
+***
+
+## 2026-09-03：`framework` 修「权限标识留空 → /api/auth/me 崩溃」
+
+菜单管理新增菜单时「权限标识」留空，MyBatis-Plus 把空串 `''` 原样写库。该菜单授权后，
+`TokenAuthenticationFilter` 对每个带令牌的请求执行 `new SimpleGrantedAuthority("")` 抛
+`IllegalArgumentException`，该用户所有已认证请求整体 500（`/api/auth/me` 最先命中，
+前端表现为登录后白屏）。
+
+三层修复（都在 `framework`，`main` 已提交，**未发版**）：
+
+- `framework-security-starter`：`TokenAuthenticationFilter.authoritiesOf` 跳过空白角色/
+  权限项；新增 `TokenAuthenticationFilterTest`（2 例）。
+- `framework-system-starter`：`SysRelationMapper.selectPermCodesByUserId` 加
+  `TRIM(m.perm_code) <> ''`；`SysMenuService.save`/`updateById` 覆写，落库前把空白
+  `permCode`/`icon` 归一为 `NULL`。
+- `CHANGELOG.md` 加 `## Unreleased` → Bug Fixes。
+
+既有脏数据无需迁移。**下一步**：跟随下次 `framework` 发版（预计 0.2.2 或 0.3.0）。
+frontend 菜单表单可选优化（提交时空串改 `null`/不传），非必需——服务端已是权威归一。
 
 ***
 
