@@ -20,7 +20,7 @@
   以及**开箱可用的用户/角色/菜单/部门管理**
 - 前端：27 个 `@describeadmin/*` npm 包，含布局、表单、弹窗、权限指令、请求封装
 - 生成器：写一份 YAML，一条命令同时产出后端四件套 + 建表 SQL + 菜单 SQL
-  + 前端页面 + API 封装 + 验收用例
+  + 前端页面 + API 封装
 
 **还给不了你的**（诚实记录，避免你踩空）：
 
@@ -274,7 +274,6 @@ java -jar codegen.jar codegen-specs/order.yaml --out .
 | `schema-biz_order.sql` | `src/main/resources/db/` |
 | `menu-biz_order.sql` | `src/main/resources/db/` |
 | 列表页 `.vue` + API 封装 `.ts` | 前端工程（用 `--frontend-out` 指定） |
-| 验收用例 spec | `test-specs/order.yaml` |
 
 ### 6.3 登记 SQL —— **最容易漏的一步**
 

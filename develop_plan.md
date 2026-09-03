@@ -673,7 +673,7 @@ npm create @describeadmin/app <项目名>
 
 生成器由**业务方开发者（或其 AI Agent）在开发期调用**，不进入运行时，也不进入业务方的生产构建。典型循环：
 
-写 `codegen-specs/<模块>.yaml` → 跑生成 → 把新增的 `schema-*.sql` / `menu-*.sql` 登记进 `spring.sql.init` → 重启 → 页面出现在侧边栏 → 跑生成出的结构化验收用例。
+写 `codegen-specs/<模块>.yaml` → 跑生成 → 把新增的 `schema-*.sql` / `menu-*.sql` 登记进 `spring.sql.init` → 重启 → 页面出现在侧边栏 → 按需自行编写自动化测试（页面锚点 `data-testid` 由生成器一并产出）。
 
 #### 9.4.3 fat jar 的获取与缓存（`codegen` skill）
 
@@ -705,7 +705,7 @@ fat jar 是唯一交付形态（9.4.1），但 `init-workspace.sh` / archetype /
 只有少量模块、不想要模块层级的小工程可切到 `flat`——`<basePackage>.<layer>`。
 
 - **只影响后端 Java 包与文件落点**。前端目录、`schema-*.sql` / `menu-*.sql`、
-  `test-specs/*.yaml`、`permPrefix()`、`@RequestMapping` 一律以模块名 / 表名为准。
+  `permPrefix()`、`@RequestMapping` 一律以模块名 / 表名为准。
   实现上只有一处开关：`ModuleSpec.packageOf()`；`package` 声明与跨层 import 全从它派生。
 - **取值优先级**（命中即用）：`--layout <nested|flat>` 命令行参数 → spec 顶层 `layout:` 键
   → `CODEGEN_LAYOUT` 环境变量（`workspace` 仓可据此设项目级默认，`codegen` skill 不加逻辑、

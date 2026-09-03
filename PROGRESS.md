@@ -6,10 +6,72 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-02（`framework` / `codegen` / `frontend` 三仓 `0.2.1-dev` squash 并入
-`main` 并发 `0.2.1`，三条链路全部完成：framework 10 个制品已上 Maven Central（repo1 可拉）、
-codegen GitHub Release 已建、frontend 30 个包已上 npm。三仓本地 dev 分支已删。见下方
-2026-09-02 章节。更早：Lombok 回归——只用于 codegen 生成物）**
+**最后更新：2026-09-03（`codegen` 移除 `test-specs/*.yaml` 生成，**仅 codegen 发 `0.2.2`**
+——framework/frontend 无改动、破例不同号，见下方 2026-09-03 节。更早：2026-09-02
+`framework-excel-starter` 0.2.1 安全修复发布，`commons-lang3` 3.17.0 → 3.18.0 修
+CVE-2025-48924；`framework` / `codegen` / `frontend` 三仓发 `0.2.1`。见下方 2026-09-02 各节）**
+
+***
+
+## 2026-09-03：`codegen` 移除结构化验收用例生成
+
+`codegen` 不再生成 `test-specs/<module>.yaml`。`TestSpecGenerator` 及其在
+`GeneratorTest` / `FrontendGeneratorTest` 里的 5 个测试一并删除。
+
+**动机**：这份产物是给 develop_plan.md §5.4 设想的"结构化用例执行器"用的，执行器始终
+没落地，生成的 YAML 长期无人消费。页面锚点 `data-testid`（命名 `<模块>-<对象>-<动作>`，
+由 `VueGenerator` 单点提供）仍照常生成，针对生成模块的自动化测试改为按需手写。
+
+**改动面**：
+
+- `codegen`：删 `TestSpecGenerator.java`；`CodegenCli.plan()` 去掉 test-spec 条目、
+  `printUsage` 去掉「产出（验收）」；`ci.yml` 冒烟检查改看 `menu-*.sql` + `index.vue`；
+  `VueGenerator` / `Layout` 类注释里对 `TestSpecGenerator` 的引用清掉。测试 48/48 绿。
+- `codegen/CHANGELOG.md`：新增 `## Unreleased` 记为 Breaking Change（少一个产出文件）。
+- `sample-app`：删 `test-specs/`（3 个生成产物）；`codegen-specs/*.yaml` 头注释措辞更新。
+- docs：`develop_plan.md` §9.4.2/§9.4.4、`repos.yml`、`README.md`、`QUICKSTART.md`、
+  `VERSION_BASELINE.md`（加移除说明，§5.4 格式说明与「发现 ⑨」教训保留）、
+  `workspace/CLAUDE.md` + `workspace/.claude/skills/codegen/SKILL.md`、
+  `frontend/apps/admin/e2e/README.md` 逐处更新。
+- `develop_plan.md` §5.4「测试用例规范（结构化 Spec）」**保留**——它是测试方法论，
+  手写用例仍可用这套格式，只是不再由 codegen 自动产出。
+
+**发布：codegen 0.2.2（仅此一仓）**。经确认破例——版本锁规则本要求三仓同号，但 framework
+自 0.2.1 起零改动，frontend 只有一处 README 措辞；把无改动的 framework 不可逆地推上
+Central 不划算，且组织发布配额已超标（10-01 起强制）。codegen 的 GitHub Release 是唯一
+可逆链路，也是唯一真有改动的仓。`CHANGELOG.md` 记为 `## 0.2.2 (2026-09-03)` 并写明破例理由。
+codegen 0.2.2 与 framework 0.2.1 完全兼容（生成的 Java/SQL/Vue 逐字节不变）。
+
+提交：`codegen` `release: 0.2.2` + tag `v0.2.2` 推 `main`（触发 Release 工作流，
+`environment: maven-central` 有审批闸门，需在 Actions 页点批准）；`sample-app` / `docs` /
+`frontend` / `workspace` 的配套改动各自 commit 到 `main`，不发版。
+
+***
+
+## 2026-09-02 追加：`framework-excel-starter` 0.2.1（CVE-2025-48924 安全修复）
+
+Mend/JetBrains 扫出 `framework-excel-starter` 传递依赖的 `commons-lang3` 是 3.17.0，
+命中 **CVE-2025-48924**（`ClassUtils.getClass(...)` 超长输入 `StackOverflowError`，CVSS 5.3）。
+依赖链：`fesod-sheet` → `poi 5.5.1` → `commons-lang3`，版本被 `spring-boot-dependencies 3.5.16`
+（经 `framework-bom`）仲裁在 3.17.0。
+
+**修法**：插件 POM 的 `dependencyManagement` 显式钉 `org.apache.commons:commons-lang3:3.18.0`，
+且**排在 `framework-bom` 的 import 之前**（Maven first-declaration-wins，放后面不生效）。
+`mvn dependency:tree` 已确认 `commons-lang3:3.18.0`，42 个测试全绿。
+
+**发布方式变更**：该仓 release profile 的 `central-publishing-maven-plugin` 从
+`autoPublish=false`（draft → Portal 手动 Publish）改为 `autoPublish=true` + `waitUntil=published`。
+0.2.0 已验证完整链路，符合 `RELEASE.md` §4.2.d。**其它插件仓仍是 draft 流程，未改。**
+
+**流程**：`0.2.1-dev` 分支提交 → `git merge --no-ff` 并入 `main`（绕过 PR 保护规则，admin bypass）→
+push `main` → 打 tag `v0.2.1` 触发 release 工作流。工作流 6m33s 绿，日志
+`Deployment ... was successfully published`。`0.2.1-dev` 本地 + 远端已删。
+
+**发布结果**：`framework-excel-starter-0.2.1` 已上 Maven Central，repo1 metadata
+`<release>0.2.1`，jar HTTP 200。**完成**。
+
+> ⚠️ Central warning：`describeadmin` 组织已超月度 File Count / Release Count 发布配额，
+> **2026-10-01 起强制执行**——届时发布可能被拦，需关注 https://central.sonatype.com/publishing/usage?org=describeadmin
 
 ***
 

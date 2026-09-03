@@ -72,7 +72,7 @@ repos:
     desc: 代码生成器，以 YAML/DSL 为主输入（见 develop_plan.md 3.3.1）
     note: |
       不依赖任何 framework-* 模块——只产出源码文本，运行时不需要框架类。
-      产出含结构化端到端验收用例，连接目标 #2（面向 AI 编程）与 #3（AI 自主测试）。
+      产出的页面强制带 data-testid 锚点，为目标 #3（AI 自主测试）留好定位点。
       ⚠️ 它是【命令行工具，不是库】：绝不出现在业务方 pom.xml 的 <dependencies> 中（9.4）。
       会同时向两个仓库输出（Java/SQL → <业务>-server，Vue/TS → <业务>-web），
       因此交付形态必须能跨仓工作。
