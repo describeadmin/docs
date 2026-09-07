@@ -30,9 +30,23 @@
 - `notify-consumers.yml` 删除对 sample-app 的 repository_dispatch。
 
 ### D4 — 插件专属集成测试 → 回到各自插件仓
-- `EmailLoginIT` + `AbstractGreenMailIntegrationTest` → `framework-auth-email-starter`
-- `EmployeeCryptoIT` / `NurseCryptoIT` → `framework-crypto-starter`
-- （两插件仓大概率已有等价覆盖，迁移时先比对，只补缺口）
+比对结论（2026-09-07）：
+
+- **`framework-crypto-starter`**：已有自带 `it/` 包（`AbstractMySqlIntegrationTest` +
+  Testcontainers + `CryptoTestApplication` + `CryptoEndToEndIntegrationTest` 6 例 +
+  `BlindIndexInnerInterceptorTest` 10 例，共 90 个 @Test）。sample 的
+  `EmployeeCryptoIT`/`NurseCryptoIT`（密文入库 / 明文读出 / partial update 不清空密文 /
+  盲索引等值命中）**已被完全覆盖**，`autoResultMap` 陷阱也已写进该仓 README 与 javadoc。
+  → 无需迁移，随 sample-app 一并删除。
+- **`framework-auth-email-starter`**：已有 `EmailCodeServiceTest`（GreenMail 真实收发 /
+  错误码 / 防枚举，10 例）+ `EmailCodeAuthProviderTest` + `FrameworkAuthEmailAutoConfigurationTest`
+  （共 28 个 @Test），登录逻辑层已覆盖。sample 的 `EmailLoginIT` 唯一未被覆盖的是
+  **HTTP 过滤器链整合**（发码端点经 framework-security 的 permit-all 贡献免认证可达、
+  `/api/auth/providers` 的 HTTP 响应形态）。此项风险低且已在插件 README 明确记载
+  「不加 permit-all 会 401」。
+  → 本轮不迁移。建议后续在该插件仓补一个 `WebEnvironment.RANDOM_PORT` 整合测试
+  （需把 framework-security-starter + framework-system-starter 加入其 test scope），
+  作为独立 follow-up，不阻塞 sample-app 删除。
 
 ### D5 — codegen 端到端验收 → codegen 仓自带夹具
 - 新增 `codegen/e2e/`：自带 spec 夹具（等价于原 `sample-app/codegen-specs/project.yaml`）。
