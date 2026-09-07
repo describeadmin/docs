@@ -6,11 +6,46 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-07（0.2.2 锁能力代码评审 + 9 条修复，`framework` 与
-`framework-cache-redis-starter` 两仓**已提交 `main`、未推远端**，见下方 2026-09-07 节。
-更早：2026-09-03 `framework` 修空「权限标识」崩溃 bug；`codegen` 移除 `test-specs/*.yaml`
-生成，**仅 codegen 发 `0.2.2`**；2026-09-02 `framework-excel-starter` 0.2.1 安全修复。
-见下方各节）**
+**最后更新：2026-09-07（非代码层优化 Phase 1 + Phase 2 部分完成，见下方
+「2026-09-07：非代码层优化」节。更早：0.2.2 锁能力代码评审 + 9 条修复，`framework` 与
+`framework-cache-redis-starter` 两仓已提交 `main`、未推远端；2026-09-03 `framework`
+修空「权限标识」崩溃 bug；`codegen` 移除 `test-specs/*.yaml` 生成，**仅 codegen 发 `0.2.2`**；
+2026-09-02 `framework-excel-starter` 0.2.1 安全修复。见下方各节）**
+
+***
+
+## 2026-09-07：非代码层优化（Phase 1 完成，Phase 2 进行中）
+
+方案与决策见 `docs/MIGRATION_NOTES.md`。全部改动**已提交各仓 `main`、未推远端**。
+
+**Phase 1 — 切断 sample-app 依赖（完成）**
+
+- `framework`：新增不发布的 `framework-it` 模块（只在 `-Pit` profile 挂载），
+  从 sample-app 迁入 104 条运行时行为断言（审计填充 / 分页 / 逻辑删除 / 乐观锁 /
+  中文往返 / 认证 SPI / 系统模块 / 权限 / 数据权限 / 操作日志 / 在线会话 /
+  登录锁定 / 口令策略 / 强制改密）。本地 `mysql:5.7` 与 `mysql:8.4` 各跑绿 104/104。
+  CI 新增 `it-matrix` job；删除 `notify-consumers.yml`（原向 sample-app 派发门禁）。
+- `codegen`：CI 新增 `e2e-compile` job（checkout framework → archetype 现生成工程 →
+  注入 project 模块 → `mvn test-compile`），取代「sample-app 全量编译」的验证。
+  ⚠️ CI-only，待首次 CI 跑通确认。
+- `framework-crypto-starter`：自带 `it/` 包已完全覆盖 sample 的加密 IT，无需迁移。
+- `framework-auth-email-starter`：逻辑层已覆盖；HTTP 过滤器链整合测试作为独立
+  follow-up（未做）。
+- `frontend`：`apps/admin` 联调后端文案改为「archetype 生成的工程」。
+- `sample-app` / `sample-frontend`：本地目录已删；`describeadmin/sample-app` 远端仓
+  **保留不动**（人工决定）；`repos.yml` 已移除两条登记。
+
+**Phase 2 — docs 整理（进行中）**
+
+- 已完成：删 `develop_plan.v0.3.bak.md`、`scripts/toolchains.xml.sample`；
+  `CLAUDE.md` 母本头注释 + §0 + §1 toolchains + §6 改写；`README.md` / `QUICKSTART.md` /
+  `develop_plan.md` 的 sample-app 引用清理。
+- 待办：`develop_plan.md` 收窄为设计决策记录（删附录 A 修订史、第十章路线图塌缩、
+  剥离 `(v0.4 新增)` 内联标记）；`VERSION_BASELINE.md` 逐轮实测 → 现行事实清单归并；
+  本文件（PROGRESS）历史日志切出 `PROGRESS.archive.md`；`LOGIN_MODULE_AUDIT.md` 存档。
+
+**Phase 3/4 — 待办**：删各子仓 CLAUDE.md 副本（回收 frontend / auth-email / crypto
+的漂移条目）；各仓 README 按统一六段结构重写。
 
 ***
 

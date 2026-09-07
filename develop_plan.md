@@ -133,7 +133,7 @@
 - toolchains 把要求收紧成"必须有一个指定版本、否则先配 `~/.m2/toolchains.xml`"，没配的协作者 / AI 会以 `Cannot find matching toolchain` 直接构建失败——比它要防的坑更劝退
 - 因此 `framework` / 各插件仓 / `codegen` 的 POM 一律**移除 `maven-toolchains-plugin`**，改由 `maven-enforcer-plugin` 的 `requireJavaVersion` → `[17,)` 兜底
 - CI 侧仍由 `actions/setup-java` 固定版本（默认 21），与本地构建者用哪个 JDK 无关
-- **唯一保留 toolchains 的是 `sample-app`**，且刻意钉 JDK **17**：用最低支持版本端到端构建业务样例，验证"业务方 Java 17+ 即可"这条承诺（见 VERSION_BASELINE 发现 ⑥ 及第八轮修订）
+- 「以最低支持版本 JDK **17** 验证『业务方 Java 17+ 即可』这条承诺」由 `framework` CI 的 `archetype-e2e` job 承担——它先用 JDK 21 装框架，再**显式切到 JDK 17** 构建脚手架生成物并跑通登录（见 VERSION_BASELINE 发现 ⑥ 及第八轮修订）
 
 ### 2.3 数据库兼容策略（v0.4 重写）
 
@@ -549,7 +549,7 @@ Git worktree 本身是原生能力，真正需要做的工作是让项目工具�
 
 ## 九、业务方接入路径（v0.5 新增）
 
-前八章描述的是框架自身如何构造。本章描述的是**框架发布之后，一个业务方从零到跑起来要做什么**——这条路径此前只散落在 `sample-app` 的 POM 注释与 `VERSION_BASELINE.md` 的实测发现里，从未被当作设计对象。
+前八章描述的是框架自身如何构造。本章描述的是**框架发布之后，一个业务方从零到跑起来要做什么**——这条路径早期只散落在临时样板工程的 POM 注释与 `VERSION_BASELINE.md` 的实测发现里，从未被当作设计对象。
 
 把它补成独立一章的理由：**它是目标 #1、#2、#5 的最终检验**。框架内部分层再干净，如果业务方接入要走九个步骤、踩三个已知的坑，那"生产级"与"面向 AI 编程"就没有真正兑现。
 
@@ -568,7 +568,7 @@ Git worktree 本身是原生能力，真正需要做的工作是让项目工具�
 
 #### 9.2.1 业务方工程的形态
 
-`sample-app` 就是这个形态的活样本——它刻意**不继承** `framework-parent`，以真实业务方的姿态消费框架。要点：父 POM 是 `spring-boot-starter-parent`；只 `import framework-bom`，框架模块一律不写版本号；JDBC 驱动由业务方声明（2.3.2）。
+目标形态：**不继承** `framework-parent`，以真实业务方的姿态消费框架——父 POM 是 `spring-boot-starter-parent`；只 `import framework-bom`，框架模块一律不写版本号；JDBC 驱动由业务方声明（2.3.2）。`describeadmin-archetype` 生成的就是这个形态；`framework-it` 模块在框架仓内以同样姿态消费框架，作为运行时行为门禁。
 
 #### 9.2.2 三个必须由模板固化的坑
 
@@ -587,7 +587,7 @@ Git worktree 本身是原生能力，真正需要做的工作是让项目工具�
 > **archetype 不生成 toolchains 配置**，业务方用哪个 JDK 构建是业务方的自由。
 > 后续（见 2.2.2「第八轮修订」）进一步把 `framework` / 各插件仓 / `codegen` 的
 > `maven-toolchains-plugin` 也一并移除，统一改用 enforcer 的 `requireJavaVersion [17,)` 兜底。
-> 现在**只有 `sample-app` 保留** toolchains 且刻意钉 JDK 17，用途是框架团队"以最低支持版本构建"的兼容性验证。
+> 现在**没有任何仓库**配 `maven-toolchains-plugin`；"以最低支持版本 JDK 17 构建"的兼容性验证改由 `framework` CI 的 `archetype-e2e` job（显式切 JDK 17 构建脚手架生成物）承担。
 
 **结论：接入不能靠文档，必须靠模板。** 框架需交付一个 Maven archetype：
 
@@ -739,7 +739,7 @@ npm create @describeadmin/app <项目名>
 上面五步里的第 1、2 步（archetype、create-app）各自独立、互不知道对方的存在，第 3~5 步
 则完全靠开发者自己手工衔接。这暴露了一个更深的缺口：目标 #2「面向 AI 编程」、
 目标 #4「worktree 友好」、目标 #5「AI 自动化测试」在业务方这一侧从未有过交付物——
-此前这三个目标只体现在框架团队自己的验证载体（`sample-app`/`sample-frontend`）上，
+此前这三个目标只体现在框架团队自己的验证载体上，
 业务方拿到的只是一个能跑的后台，没有配套的 AI 工作目录、本地环境编排、可视化测试机制。
 
 `describeadmin/workspace` 仓库把这个缺口补上，作为业务方唯一需要知道的入口：
