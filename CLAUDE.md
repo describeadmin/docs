@@ -1,8 +1,8 @@
 # describeadmin 编码规范与项目约定
 
 > 本文件是组织级的唯一约定来源，供开发者与 AI Agent 共同遵循。
-> 本文件由组织根仓库维护，各子仓库以副本或软链复用，**不要在子仓库中单独修改**。
-> （自动同步脚本待实现，当前手工同步。）
+> **它只有这一份，就在 `docs` 仓**——各子仓库不再放副本。做框架 / 插件开发时，
+> 把目标仓库与 `docs` 仓并列检出即可。
 >
 > 设计依据见 `develop_plan.md`；版本事实见 `VERSION_BASELINE.md`。
 > 本文件只写"必须遵守的约定"，不重复方案里的论证过程。
@@ -19,7 +19,8 @@
 **绝对禁止**：把框架源码拷贝进业务仓库；在业务仓库里修改框架代码。
 
 多仓拓扑下，改动一个 SPI 接口通常要同步改 `framework` + 对应 `framework-ext-*` + `frontend`。
-动手前先跑 `./scripts/clone-all.sh` 拿到完整上下文。
+日常开发只需并列检出【目标仓库 + `docs`】两个仓；要拿到跨 SPI 的完整上下文时，
+再在 `docs` 仓跑 `./scripts/clone-all.sh`。
 
 ---
 
@@ -35,10 +36,11 @@
 
 **构建 JDK 只要求 ≥ 17**——`maven.compiler.release=17` 已保证产物在 Java 17 上运行，
 构建用 17 / 21 / 25 都行，`PATH` 上默认是哪个 `java` 无所谓（低于 17 会被 enforcer 拦下）。
-`framework` / 各插件 / `codegen` 均**不再用 `maven-toolchains-plugin`**——钉死具体版本只会让没配
-`~/.m2/toolchains.xml` 的人以 `Cannot find matching toolchain` 直接构建失败，比它要防的坑更劝退
-（见 develop_plan.md 2.2.2 与 VERSION_BASELINE 第八轮）。唯一仍配 toolchains 的是 `sample-app`，
-它刻意钉 JDK 17，用最低支持版本验证兼容承诺。
+`framework` / 各插件 / `codegen` / `describeadmin-archetype` 一律**不用 `maven-toolchains-plugin`**——
+钉死具体版本只会让没配 `~/.m2/toolchains.xml` 的人以 `Cannot find matching toolchain` 直接构建失败，
+比它要防的坑更劝退（见 develop_plan.md 2.2.2 与 VERSION_BASELINE 第八轮）。
+「以最低支持版本 JDK 17 验证兼容承诺」这件事，改由 framework CI 的 `archetype-e2e` job
+承担——它显式切到 JDK 17 去构建脚手架生成物。
 
 **版本核查纪律**：任何依赖版本以 `https://repo1.maven.org/maven2/**/maven-metadata.xml`
 和 `https://registry.npmjs.org/<pkg>` 为准。
@@ -419,7 +421,7 @@ lombok 版本。
 ## 6. 常用命令
 
 ```bash
-# 拉取全部仓库到工作区
+# 拉取全部仓库到工作区（仅在需要跨 SPI 完整上下文时）
 ./scripts/clone-all.sh
 
 # 构建（任意 JDK ≥ 17 即可，无需 toolchains）
@@ -427,6 +429,9 @@ mvn -f framework/pom.xml clean install
 
 # 跳过 GPG 签名的本地安装
 mvn -f framework/pom.xml clean install -Dgpg.skip=true
+
+# 运行时行为门禁（Testcontainers 拉真实 MySQL；-Dmysql.image=mysql:8.4 切另一条线）
+mvn -f framework/pom.xml -Pit -pl framework-it verify
 
 # 验证 release profile 能产出 Central 要求的三件套（跳过签名，本地可跑）
 mvn -f framework/pom.xml clean verify -Prelease -Dgpg.skip=true

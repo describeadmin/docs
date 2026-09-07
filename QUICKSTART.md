@@ -75,9 +75,9 @@
 > export JAVA_HOME=/path/to/jdk17     # 不满足时这样改（Windows: $env:JAVA_HOME=...）
 > ```
 >
-> 框架源码、插件仓、`codegen`、业务工程都**不再用 `maven-toolchains-plugin`**——
+> 框架源码、插件仓、`codegen`、业务工程都**不用 `maven-toolchains-plugin`**——
 > 只要 Maven 跑在 JDK 17+ 上就能构建，`release=17` 保证产物在 Java 17 上可运行。
-> （唯一例外是 `sample-app`，它刻意用 toolchains 钉 JDK 17 做最低版本验证。）
+> （「以最低支持版本 JDK 17 验证」由 framework CI 的 `archetype-e2e` job 承担。）
 
 ---
 
@@ -183,10 +183,6 @@ curl -s -X POST http://localhost:8090/api/auth/login \
 产物侧由 `pom.xml` 的 `<java.version>17</java.version>`（即 `release=17`）钉死——
 无论用多新的 JDK 构建，字节码都落在 Java 17。
 
-（`sample-app` 的 POM 里有 toolchains 配置，那是为了让框架团队用最低支持版本验证兼容性，
-不是业务工程该抄的东西。业务方机器上大多没有 `~/.m2/toolchains.xml`，
-抄过去只会以 `Cannot find matching toolchain` 直接打死构建。）
-
 ---
 
 ## 4. 前端：以 apps/admin 为起点
@@ -250,8 +246,8 @@ pnpm dev            # http://localhost:5777
 
 ### 6.1 写 spec
 
-在 `my-server/codegen-specs/` 下新建 `order.yaml`，可参照
-[`sample-app/codegen-specs/project.yaml`](https://github.com/describeadmin/sample-app/blob/main/codegen-specs/project.yaml)。
+在 `my-server/codegen-specs/` 下新建 `order.yaml`，可参照 codegen 仓的
+[`examples/project.yaml`](https://github.com/describeadmin/codegen/blob/main/examples/project.yaml)。
 
 ### 6.2 跑生成器
 
@@ -350,7 +346,7 @@ spring:
 
 「能构建」不等于「能用」，所以这条按下面的顺序验，每一步都不靠推断：
 
-1. **全新克隆** `sample-app`，**空的本地 Maven 仓库**（`-Dmaven.repo.local` 指向空目录）
+1. **全新生成一个 archetype 工程**，用**空的本地 Maven 仓库**（`-Dmaven.repo.local` 指向空目录）
    ——本机 `~/.m2` 里若有同版本缓存，Maven 根本不会碰 Central，跑绿了也证明不了任何事
 2. 来源核验：`_remote.repositories` 记录为 `central=`，
    且本地解析到的 jar 与 `repo1.maven.org` 上的 **SHA256 完全一致**
