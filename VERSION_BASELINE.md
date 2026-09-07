@@ -89,6 +89,34 @@
 
 ---
 
+## 踩过的坑：编号索引
+
+下表是全部编号「发现」的一句话索引，详情在第七节及第二~九轮实测记录里（按发现号搜索即可）。
+CLAUDE.md 与 develop_plan.md 用编号引用这些坑。🔴 = 会静默出错 / 影响面大。
+
+| # | 一句话 | 详见 |
+|---|---|---|
+| ① | `PaginationInnerInterceptor` 已迁出 `mybatis-plus-extension` 制品，需单独引 `mybatis-plus-jsqlparser` | 第七节 |
+| 🔴 ② | `framework-bom` 的驱动默认值对继承 `spring-boot-starter-parent` 的业务方无效——父 POM 继承的 depMgmt 优先级更高，必须自己 `<properties>` 写 `<mysql.version>8.2.0</mysql.version>` | 第七节 |
+| ③ | `IService` / `ServiceImpl` 也迁出了 `mybatis-plus-extension`（改 `mybatis-plus-spring`） | 第二轮 |
+| 🔴 ④ | `mysql` CLI 导入脚本不带 `--default-character-set=utf8mb4` → 中文静默损坏，`COUNT(*)` 校验查不出 | 第二轮 |
+| 🔴 ⑤ | `spring.sql.init` 默认用平台编码读脚本（中文 Windows = GBK）→ 中文再次被静默写坏，必须 `spring.sql.init.encoding=UTF-8` | 第三轮 |
+| ⑥ | 曾以为业务方工程也要配 `maven-toolchains-plugin`——**已推翻**（第八轮）：Maven 跑在 JDK 17+ 本就是硬要求，`release=17` 已足够，toolchains 反而因缺 `~/.m2/toolchains.xml` 打死构建 | 第三轮 + 第八轮 |
+| 🔴 ⑦ | 跨 starter 用 `@ConditionalOnBean` 有装配顺序陷阱——晚评估的一方条件不成立，「引了却没生效、启动无异常」；用 `@AutoConfiguration(before/beforeName)` | 第四轮 |
+| ⑧ | 业务方写 `@MapperScan("自己的包")` 会屏蔽框架 Mapper 的自动扫描，登录即失败——不写，或把框架包一并纳入 | 第四轮 |
+| 🔴 ⑨ | Java 文本块剥离公共缩进，叠加 YAML 缩进敏感 → 产出结构错乱的文件而不报错 | 第五轮 |
+| 🔴 ⑩ | 方案 4.3 的前端版本表与 Vben 5.7.0 实际 catalog 大面积不符（pinia 连大版本都写错）——以 catalog 为准 | 第六轮 |
+| 🔴 ⑪ | `accessMode: 'backend'` 下前端静态路由模块完全不参与路由生成，`defaultHomePath` 必须是菜单表里真实存在的路径，否则登录后直接 404 | 第六轮 |
+| ⑫ | Windows 上 Python `Path.write_text` 默认写 CRLF / 平台编码，与 CI 的 Linux 不一致——显式 `newline='\n'` + `encoding='utf-8'` | 第六轮 |
+| 🔴 ⑬ | 「我跑过 lint 了」必须指项目自己定义的那条命令（`oxfmt` / 项目 eslint 配置），不是随手一个 | 第六轮 |
+| 🔴 ⑭ | codegen 生成的 Controller 里 spec 的 `query` 此前完全是死的——现覆写 `buildListWrapper` 真正生效 | 第七轮 |
+| 🔴 ⑮ | 接口路径重复 `/api` 前缀，报错信息与真实原因毫不相干 | 第七轮 |
+| ⑯ | Maven 默认排除规则会悄悄吃掉 `.gitignore`（`.gitattributes` 不受影响）——`addDefaultExcludes=false` | 第八轮 |
+| ⑰ | Velocity 把行首 `##` 当单行注释，markdown 二级标题在生成物里整行消失且不报错——非过滤文件不要标 `filtered` | 第八轮 |
+| ⑱ | archetype 发布到 Central **不需要** sources / javadoc 附件 | 第八轮 |
+| 🔴 ⑲ | 带 `datetime` 字段的模块表单提交一直是坏的，且报 **500 不是 400**——已随 `FrameworkJsonModule` 的时间入参「进宽」修复 | 第九轮 |
+| 🔴 ⑳ | `GlobalExceptionHandler` 把所有请求体解析失败都报成 500（应 400）——与 ⑲ 相互独立 | 第九轮 |
+
 ## 三、冲突与处置
 
 ### ✅ 冲突 A：MySQL 5.7 与 JDBC 驱动（**已决策：拆分框架责任与业务方责任**）
@@ -193,12 +221,11 @@
 
 ---
 
-## 四、待 Walking Skeleton 实测的事项
+## 四、待实测事项（已全部完成）
 
-1. MyBatis-Plus 3.5.17（boot3 starter）与 Spring Boot 3.5.16 的实际兼容性
-2. Connector/J **8.2.0**（框架默认值） 在 Java 21 + Spring Boot 3.5.16 下的可用性，含 `mysql_native_password`（5.7）与 `caching_sha2_password`（8.0+）两种鉴权
-3. Element Plus 2.14.x 在 Vue 3.5.40 + Vite 8 + Vben 5.7.0 下的构建与类型兼容性
-4. ~~Vben 要求的 node `^22.18 || ^24.12` + pnpm 11 与团队现有环境的一致性~~ —— ✅ **已验证通过**，见第六节
+第一期的 Walking Skeleton 与第二~九轮实测已覆盖全部原「待实测」项（MyBatis-Plus ×
+Spring Boot 兼容、Connector/J 8.2.0 双鉴权、Element Plus × Vue/Vite/Vben 构建、
+Node/pnpm 环境一致性），结论见下方各轮记录。
 
 ## 五、未能核实、需人工确认
 
@@ -232,8 +259,9 @@
 已实测：指定 `JAVA_HOME=C:/Users/Jeffr/.jdks/ms-21.0.12` 后 `mvn -v` 正确报告
 `Java version: 21.0.12, vendor: Microsoft`。
 
-> 由于 `PATH` 上的默认 java 是 11，**不能依赖默认环境构建**。阶段 0 需交付 `toolchains.xml`
-> 与 `maven-toolchains-plugin` 配置，使构建不依赖 `PATH` 与手工 `JAVA_HOME`（见方案 2.2.2）。
+> 由于 `PATH` 上的默认 java 是 11，**构建时须显式 `JAVA_HOME` 指向 17+ 的 JDK**。
+> （曾计划用 `maven-toolchains-plugin` 免去这一步，后于第八轮推翻——见发现 ⑥。
+> 现在所有仓库都不配 toolchains，`mvn -v` 报告的 JDK 是 17+ 即可。）
 
 ---
 
