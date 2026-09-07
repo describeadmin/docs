@@ -1,0 +1,53 @@
+# 非代码层优化 —— 迁移决策记录（临时）
+
+> 本文件是「摆脱 sample-app 依赖 + docs 整理 + 删 CLAUDE.md 副本 + README 重写」
+> 这轮优化的对照基准。完成后其结论并入 `develop_plan.md`，本文件删除。
+> 立项日期：2026-09-07。
+
+## 已定决策
+
+### D1 — sample-app / sample-frontend 彻底删除
+- 两个仓当初只为临时测试而建，从未打算作为框架开发的一份子，现已被发版门禁严重依赖。
+- 本地目录删除；`describeadmin/sample-app` 远端仓删除（需人工确认后执行）；
+  `sample-frontend` 无远端，仅删本地。
+- 其承担的验证职责按 D3 / D4 / D5 转移。
+
+### D2 — 各子仓根目录 CLAUDE.md 副本全部删除
+- 框架 / 插件开发只需并列检出 `<目标仓> + docs` 两个仓，不需要 clone-all。
+- 保留：`docs/CLAUDE.md`（唯一母本）、`workspace/CLAUDE.md`（业务方视角，内容本就不同）。
+- 删除前先把 `frontend` / `framework-auth-email-starter` / `framework-crypto-starter`
+  三份已漂移副本里「母本没有、仅本仓相关」的条目回收进母本或对应仓 README。
+- 母本 §0 改为「clone 目标仓 + docs 并列检出」；删掉「各子仓以副本/软链复用、自动同步脚本待实现」整段。
+
+### D3 — 双版本 MySQL 运行时门禁 → `framework` 仓新增 `framework-it` 不发布模块
+- 只在 `-Pit` profile 的 `<modules>` 里挂载，默认 reactor 与 `-Prelease` 均不含它；
+  另加 `maven.deploy.skip=true` 兜底。不受 `enforce-core-thin` 约束。
+- 从 `sample-app/src/test` 迁入框架核心运行时行为断言（审计填充 / 分页 / 逻辑删除 /
+  乐观锁 / 中文往返 / 认证 SPI / 系统模块 CRUD / 权限与数据权限 / 操作日志 / 在线会话 /
+  登录锁定 / 口令策略 / 强制改密），Testcontainers 跑 `mysql:5.7` 与 `mysql:8.4`。
+- framework CI 新增 `it-matrix` job；保留现有 `archetype-e2e`（它已覆盖「真实业务方姿态 +
+  BOM 仲裁 + JDK 17 最低版本构建 + 中文字节核验」，接掉 sample-app 保留 toolchains 的职责）。
+- `notify-consumers.yml` 删除对 sample-app 的 repository_dispatch。
+
+### D4 — 插件专属集成测试 → 回到各自插件仓
+- `EmailLoginIT` + `AbstractGreenMailIntegrationTest` → `framework-auth-email-starter`
+- `EmployeeCryptoIT` / `NurseCryptoIT` → `framework-crypto-starter`
+- （两插件仓大概率已有等价覆盖，迁移时先比对，只补缺口）
+
+### D5 — codegen 端到端验收 → codegen 仓自带夹具
+- 新增 `codegen/e2e/`：自带 spec 夹具（等价于原 `sample-app/codegen-specs/project.yaml`）。
+- CI 用 `describeadmin-archetype` 生成一次性后端工程 → 跑 codegen 生成模块 →
+  对「上一个已发布 framework」编译通过 + 起服务登录。
+- README 删除「sample-app 全量 34/34」「project 模块无手写代码」等表述。
+
+### D6 — frontend/apps/admin 解除对 sample-app 的默认指向
+- dev proxy 目标改为读环境变量，默认值仅注释说明；文档改为「起 create-app / archetype 后端」。
+
+## 执行顺序
+
+Phase 1（切 sample-app：D3 → D5 → D4 → D6 → D1 删除）
+→ Phase 2（docs 整理，含母本 CLAUDE.md 清理、develop_plan 收窄为设计决策记录、
+   删 develop_plan.v0.3.bak.md、PROGRESS/VERSION_BASELINE 瘦身）
+→ Phase 3（D2 删各仓 CLAUDE.md 副本）
+→ Phase 4（各仓 README 按统一六段结构重写）
+→ Phase 5（验证：全工作区无 sample-app 引用；-Pit 绿；-Prelease 不含 framework-it）
