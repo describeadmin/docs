@@ -6,10 +6,70 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-03（`framework` 修空「权限标识」崩溃 bug，已提交 `main` 未发版，
-见下方 2026-09-03 节。更早：`codegen` 移除 `test-specs/*.yaml` 生成，**仅 codegen 发 `0.2.2`**
-——framework/frontend 无改动、破例不同号。再早：2026-09-02 `framework-excel-starter`
-0.2.1 安全修复，`framework` / `codegen` / `frontend` 三仓发 `0.2.1`。见下方各节）**
+**最后更新：2026-09-07（0.2.2 锁能力代码评审 + 9 条修复，`framework` 与
+`framework-cache-redis-starter` 两仓**已提交 `main`、未推远端**，见下方 2026-09-07 节。
+更早：2026-09-03 `framework` 修空「权限标识」崩溃 bug；`codegen` 移除 `test-specs/*.yaml`
+生成，**仅 codegen 发 `0.2.2`**；2026-09-02 `framework-excel-starter` 0.2.1 安全修复。
+见下方各节）**
+
+***
+
+## 2026-09-07：0.2.2 锁能力代码评审修复（9 条，已提交 main 未推）
+
+对尚未提交的 0.2.2 锁能力（`LockOperations` SPI / `@DistributedLock` / `UniqueGuard` /
+`RedisLockOperations`）做代码评审，修掉 9 条。**`framework` / `framework-cache-redis-starter` 已提交各自 `main`，`sample-app` 回归用例提交在 `0.2.1-dev`，均未推远端。**
+
+`framework`：
+
+- **自锁死（必现，非并发）**：`createUser` / `updateOwnProfile` 在入口持
+  `user:mobile`/`user:email` 锁，锁内又调自己也持同一把键的
+  `assertMobileEmailAvailable`——锁刻意不可重入，凡是带手机号/邮箱的建号与自助改资料
+  100% 抛「操作冲突」。修法：`assertMobileEmailAvailable` 改为**不加锁的纯校验**，
+  锁统一由新增的私有 `withMobileEmailLock` 在入口加。
+- **管理员编辑路径并发无保护**：controller 先校验后写入是两次调用，锁在校验返回时就
+  释放了。新增 `SysUserService.updateWithUniqueCheck(id, entity)` 把校验与写入收进
+  同一临界区，controller 改调它。
+- **锁在事务内**：`updateOwnProfile` 的 `@Transactional` 去掉（写入是单条 UPDATE，
+  锁内自动提交）——留着反而把提交推迟到锁外，正是 `UniqueGuard` 自己警告的窗口。
+- **多事务管理器启不来**：`TransactionTemplate` 改 `ObjectProvider` 注入，拿不到时退化为
+  `TransactionOperations.withoutTransaction()` 并打 WARN（说明代价与修法），
+  不再让多数据源业务方在补丁版本上撞 `NoSuchBeanDefinitionException`。
+- **缺省锁键**用全限定类名（`getName()`），简单类名会让跨包同名定时任务互相静默跳过。
+- **`UniqueGuard` 从 `core/` 挪进 `api/`**：它已被四个 Service 注入、写进 README、
+  开了 `@ConditionalOnMissingBean`，事实上就是对外 API，同批的锁类型都在 `api/`。
+  0.2.2 未发布，挪包零成本；发布后就锁死了。
+
+`framework-cache-redis-starter`：
+
+- CI 矩阵 `0.2.0` → `0.2.2`（跟随 `REQUIRED_FRAMEWORK_VERSION`，否则唯一那条腿必然
+  编译失败，门禁形同虚设）；框架版本解析改为「Central 上没有就从框架仓源码装」，
+  用 repo1 直查判定（`dependency:get` 会命中 actions/cache 的本地仓库而静默跳过）。
+- README 开发命令的 `0.2.1` → `0.2.2`（低于自己要求的下限，照做必然编译失败）。
+
+同批追加（评审之外，用户提问引出）：
+
+- **`sys_user.username` 加 `@TableField(updateStrategy = NEVER)`**：用户名是账号标识、
+  禁止修改，但通用编辑端点把请求体整个反序列化后 `updateById`，此前
+  **前端传什么就落什么**——改成别的值会绕过只在创建时做的唯一性校验，改成空串会让
+  账号再也登录不上且全程无报错（空串非 null，挡不住 MyBatis-Plus 默认的 NOT_NULL 策略）。
+  已用 `sample-app` 的 `usernameIsImmutableOnUpdate` 先复现（写库成 `hacked-by-frontend`）
+  再验证修复。
+- 顺带纠正 `SysUser.password` 的一处**错误注释**：原文称"MyBatis-Plus 默认把 null 写成
+  NULL"，实测 3.5.17 的 `GlobalConfig$DbConfig` 全局 `updateStrategy` 默认就是
+  `NOT_NULL`（javap 核对字节码）。注解保留，但理由改为"防业务方把全局策略改成 ALWAYS"。
+
+**验证**：framework 全仓测试全绿；redis 插件 60 例全绿（真实 Redis 容器）；
+sample-app **114 例全绿**（真实 MySQL 5.7 容器，含建号/自助改资料/profile HTTP 路径）。
+新增回归用例：`UniqueGuardTest` 的「嵌套同键必然自锁死」与「嵌套不同键正常」、
+`SystemModuleIT.usernameIsImmutableOnUpdate`。
+
+> ⚠️ **踩坑记录**：`sample-app/pom.xml` 的 `describeadmin.version` 钉在 **0.2.0**
+> （Central 已发布版），本轮第一次跑集成测试忘了覆盖它，**跑的是 0.2.0、报出假绿**——
+> 0.2.0 里根本没有锁能力，测试全绿什么都没证明。验证本地框架改动必须显式带
+> `-Ddescribeadmin.version=0.2.2`。已在该 pom 里补注释说明这条陷阱。
+
+**下一步**：按需发版；发 0.2.2 时记得把 `registry.md` 里 cache-redis 那行的
+「最低框架版本」从 0.2.0 改成 0.2.2、状态改成已发布 v0.2.2（三处一致规则）。
 
 ***
 
