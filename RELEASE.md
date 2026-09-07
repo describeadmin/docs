@@ -25,7 +25,7 @@
 > 让"看到同一个版本号就知道是配套的"这件事无条件成立，比省一次发布重要。
 
 发布顺序：**framework → codegen → frontend**。前两者之间没有依赖，
-但 `sample-app` 要能从 Central 拉到框架，才谈得上验证接入路径。
+但业务方工程（`describeadmin-archetype` 生成）要能从 Central 拉到框架，才谈得上验证接入路径。
 
 §1–§4 讲 Maven Central，§4A 讲 codegen，§4B 讲 npm。
 
