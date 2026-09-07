@@ -1,8 +1,26 @@
 # 非代码层优化 —— 迁移决策记录（临时）
 
 > 本文件是「摆脱 sample-app 依赖 + docs 整理 + 删 CLAUDE.md 副本 + README 重写」
-> 这轮优化的对照基准。完成后其结论并入 `develop_plan.md`，本文件删除。
-> 立项日期：2026-09-07。
+> 这轮优化的对照基准与决策记录。立项 2026-09-07。
+>
+> **状态：Phase 1~4 已全部完成**（2026-09-07/08，各仓已提交 `main`、未推远端）。
+> 多条 commit message 与 `repos.yml` 引用本文件，故暂留一个发布周期；`0.2.2` 发版后可删。
+>
+> 已完成：
+> - **Phase 1**：`framework-it` 不发布模块（104 断言，5.7/8.4 双跑绿）；`it-matrix` CI job；
+>   `notify-consumers.yml` 删除；`codegen` `e2e-compile` job；插件 IT 比对（crypto 无需迁移、
+>   email 记 follow-up）；`frontend` playground 文案；`sample-app`/`sample-frontend` 本地删除，
+>   远端 `sample-app` 保留不动（人工决定）
+> - **Phase 2**：删 `develop_plan.v0.3.bak.md` / `scripts/toolchains.xml.sample`；
+>   全 docs 的 sample-app / toolchains 引用清理；`CLAUDE.md` 母本 §0/头注释/§1/§6 改写；
+>   `develop_plan.md` 981→887 行（删附录 A、第十章塌缩、剥离版本标记）；
+>   `VERSION_BASELINE.md` 加编号索引 + 剪已完成项；`PROGRESS.md` 1855→138 行
+>   （历史切 `PROGRESS.archive.md`）；`LOGIN_MODULE_AUDIT.md` 存档 banner
+> - **Phase 3**：8 个子仓 `CLAUDE.md` 副本删除（比对确认仅换行格式差异，无内容漂移）；
+>   `docs/CLAUDE.md` 与 `workspace/CLAUDE.md` 保留；工作区根 `CLAUDE.md` 刷新为母本副本
+> - **Phase 4**：11 个仓 README 补 framework-it / 「相关文档」指针 / 去陈旧版本号
+>
+> 未做（记为 follow-up，见 D4）：`framework-auth-email-starter` 的 HTTP 过滤器链整合测试。
 
 ## 已定决策
 

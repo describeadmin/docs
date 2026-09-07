@@ -6,13 +6,13 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-07。当前工作：非代码层优化（Phase 1 完成、Phase 2 收窄 develop_plan /
-VERSION_BASELINE 待办、Phase 3/4 已完成 CLAUDE.md 副本移除 + README 补指针）。
-更早的逐条开发日志（0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+**最后更新：2026-09-08。非代码层优化 Phase 1~4 已全部完成（见下节），各仓已提交 `main`、未推远端；
+下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
+（0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
 
 ***
 
-## 2026-09-07：非代码层优化（Phase 1 完成，Phase 2 进行中）
+## 2026-09-07/08：非代码层优化（Phase 1~4 完成）
 
 方案与决策见 `docs/MIGRATION_NOTES.md`。全部改动**已提交各仓 `main`、未推远端**。
 
@@ -33,17 +33,27 @@ VERSION_BASELINE 待办、Phase 3/4 已完成 CLAUDE.md 副本移除 + README �
 - `sample-app` / `sample-frontend`：本地目录已删；`describeadmin/sample-app` 远端仓
   **保留不动**（人工决定）；`repos.yml` 已移除两条登记。
 
-**Phase 2 — docs 整理（进行中）**
+**Phase 2 — docs 整理（完成）**
 
-- 已完成：删 `develop_plan.v0.3.bak.md`、`scripts/toolchains.xml.sample`；
-  `CLAUDE.md` 母本头注释 + §0 + §1 toolchains + §6 改写；`README.md` / `QUICKSTART.md` /
-  `develop_plan.md` 的 sample-app 引用清理。
-- 待办：`develop_plan.md` 收窄为设计决策记录（删附录 A 修订史、第十章路线图塌缩、
-  剥离 `(v0.4 新增)` 内联标记）；`VERSION_BASELINE.md` 逐轮实测 → 现行事实清单归并；
-  本文件（PROGRESS）历史日志切出 `PROGRESS.archive.md`；`LOGIN_MODULE_AUDIT.md` 存档。
+- 删 `develop_plan.v0.3.bak.md`、`scripts/toolchains.xml.sample`
+- 全 docs 的 sample-app / toolchains 引用清理；`CLAUDE.md` 母本头注释 + §0 + §1 + §6 改写
+- `develop_plan.md` 981→887 行：删附录 A（修订史）、第十章路线图塌缩、剥离版本标记
+- `VERSION_BASELINE.md`：新增「踩过的坑：编号索引」，剪除已完成的「待实测」清单。
+  逐轮实测记录保留（是发现 ①~⑳ 的详情载体、被跨文档引用）
+- 本文件历史日志切出 `PROGRESS.archive.md`（1855→138 行）
+- `LOGIN_MODULE_AUDIT.md` 加存档 banner
 
-**Phase 3/4 — 待办**：删各子仓 CLAUDE.md 副本（回收 frontend / auth-email / crypto
-的漂移条目）；各仓 README 按统一六段结构重写。
+**Phase 3 — 删 CLAUDE.md 副本（完成）**
+
+- 8 个子仓（framework / codegen / frontend / 5 个插件）的 `CLAUDE.md` 删除。
+  比对确认各副本与母本仅换行/表格分隔符格式差异，无内容漂移，无需回收
+- 保留 `docs/CLAUDE.md`（母本）与 `workspace/CLAUDE.md`（业务方视角）；
+  工作区根 `CLAUDE.md`（非 git）刷新为母本副本
+
+**Phase 4 — README（完成）**
+
+- 11 个仓 README：补 `framework-it` 说明 / 「相关文档」指向 docs 仓 / 去陈旧版本号；
+  frontend 去掉「脚手架未交付」的过时段落；plugin 仓「本仓为副本」措辞改为指向 docs 仓
 
 ***
 
