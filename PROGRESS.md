@@ -6,10 +6,45 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-08。非代码层优化 Phase 1~4 已全部完成（见下节），各仓已提交 `main`、未推远端；
+**最后更新：2026-09-08。新增「隐藏菜单」能力（见下节，含一处 schema 变更与语义变更），
+`framework` / `frontend` / `docs` 均已提交 `main`、未推远端；非代码层优化 Phase 1~4 已全部完成；
 另起了面向使用者的文档站骨架 `docs/site/`（VitePress，见下节）。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-08：隐藏菜单（独立的新增/编辑页）+ /profile 刷新丢菜单修复
+
+起因是一个提问：框架自带的增删改都是弹窗表单，业务复杂时需要独立的新增/编辑页，
+菜单管理是否撑不住这种「页面必须存在但不能进侧边栏」的场景。答案是撑不住，
+而且是前后端语义打架：前端 `toRouteRecords` 早就写了 `hideInMenu: visible === 0`，
+但后端 `SysMenuService.treeOf()` 用 `.eq("visible", 1)` 在 SQL 层就把记录滤掉了，
+`visible = 0` 的实际语义是「停用」，那行 `hideInMenu` 是死代码。
+
+**已完成（三个仓）**
+
+- `framework`：`treeOf()` 去掉 `visible` 过滤（显隐与授权解耦）；`sys_menu` 新增
+  `active_path` 列 + `SysMenu.activePath`；`normalizeBlankToNull` 覆盖 `activePath`；
+  seed 的「登录锁定」占位行改为 `path`/`component` 留 `NULL`（它靠 `visible=0`
+  来「藏起来」的写法在新语义下会生成指向不存在组件的路由）；`AuthFlowIT` +1 条断言。
+- `frontend`：透传 `activePath` 到 `meta.activePath`；菜单管理表单加「高亮菜单」项、
+  表格加「显示」列、树默认收起 + 展开/收起全部按钮；`coreRouteNames` 收窄为
+  「Root 自身 + /auth 子树」修掉 `/profile` 刷新丢菜单。`apps/admin` 与
+  `create-app/template` 两份同步。
+- `docs`：`CLAUDE.md` 新增 §4.5.1；`framework/CHANGELOG.md` 0.2.2 记 Breaking Changes。
+
+**验证**：`framework-it` 105/105 绿（mysql:5.7）；前端跑真实链路
+（Chrome → vite → 代理 → ItApplication → MySQL 5.7）14/14 绿，覆盖
+隐藏菜单不进侧边栏 / 路由仍可达 / activePath 高亮 / 取消授权后不下发 /
+菜单树默认收起与展开收起 / `/profile` 刷新菜单仍在 / 未登录跳登录页。
+
+**⚠️ 0.2.2 发版必须带上的两条**（已写进 `framework/CHANGELOG.md` 的 Breaking Changes）：
+
+1. `sys_menu.visible = 0` 语义从「停用」变「隐藏」，存量库里既有的 `visible = 0`
+   记录会变成可访问（仍需授权），升级前应检查并按需取消授权；
+2. 存量库需手动加列：
+   `ALTER TABLE sys_menu ADD COLUMN active_path VARCHAR(191) NULL COMMENT '侧边栏高亮路径' AFTER visible;`
 
 ***
 
