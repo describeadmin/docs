@@ -30,6 +30,10 @@
 | [registry.md](./registry.md) | 插件目录与准入规范 | 写插件、或想知道某能力有没有现成的 |
 | [RELEASE.md](./RELEASE.md) | 发布手册 | 只有维护者需要 |
 | [repos.yml](./repos.yml) | 全部仓库与交付物的唯一登记处 | 想知道有哪些制品 |
+| [site/](./site/) | **面向使用者**的官方文档站（VitePress，Diátaxis 四分法） | 你是框架的使用者，不是维护者 |
+
+> 上表都是**维护者文档**。面向使用者的「怎么用」文档在 [`site/`](./site/)——
+> 本地 `cd site && npm install && npm run dev` 预览，`npm run build` 出可离线部署的静态站。
 
 ## 三个设计目标
 

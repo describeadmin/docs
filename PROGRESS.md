@@ -7,10 +7,31 @@
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
 **最后更新：2026-09-08。非代码层优化 Phase 1~4 已全部完成（见下节），各仓已提交 `main`、未推远端；
+另起了面向使用者的文档站骨架 `docs/site/`（VitePress，见下节）。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
 
 ***
+
+## 2026-09-08：面向使用者的文档站骨架（`docs/site/`）
+
+此前 `docs/` 全是维护者视角（方案 / 版本基线 / 编码规范 / 进度），唯一偏用户的
+`QUICKSTART.md` 也混进了「验证状态」这类维护者记录。新起一套**对外文档**，与现有
+内部文档并存、分工明确：怎么用 → `site/`；为什么这么设计 → `develop_plan.md`（对外文档只链接）。
+
+- **技术选型**：VitePress `1.6.4`（稳定线，与「有意选上一代」一致）。纯静态产物，
+  `npm run build` → `site/.vitepress/dist` 可直接塞进内网 nginx，契合「无公网出口」目标。
+- **信息架构**：Diátaxis 四分法 —— `guide/`（教程）/ `how-to/`（操作指南）/
+  `reference/`（参考）/ `explanation/`（解释）/ `about/`（限制与贡献）。
+- **已写实内容**：两篇教程 `guide/getting-started.md`（由 `QUICKSTART.md` §1~§6 迁入，
+  剥掉验证状态）、`guide/first-module.md`（codegen 加模块）；`index.md` 首页。
+- **占位页**：其余 20 页是带「本页将覆盖 + 素材来源」的 stub，逐页补。
+- **构建产物**：本地 `npm ci && npm run build` 跑通（24 页，无死链）。
+  ⚠️ **本机 pnpm 装不了**（node_modules junction 报 "untrusted mount point"），
+  故此站单独用 npm、提交 `package-lock.json`；CI 走 `.github/workflows/docs.yml`（npm + Pages）。
+- **版本号纪律**：全站唯一事实来源是 `reference/compatibility.md`，其余页面链过去不硬编码。
+  教程里暂写的 `0.2.1` / `0.2.2` 待 `0.2.2` 统一发版后核对。
+- 尚未推远端；GitHub Pages 首次生效需在仓库 Settings 开启 Pages（source: GitHub Actions）。
 
 ## 2026-09-07/08：非代码层优化（Phase 1~4 完成）
 

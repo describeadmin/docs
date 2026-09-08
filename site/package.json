@@ -1,0 +1,15 @@
+{
+  "name": "@describeadmin/docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "describeadmin 官方文档站点",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}
