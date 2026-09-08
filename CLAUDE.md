@@ -256,6 +256,49 @@ public Result<Void> resetPassword(...) { ... }
 但关闭状态下**任何已登录账号都能调用任何接口**，权限点仍会下发给前端用于按钮显隐，
 于是界面看起来受控、实际不受控。不要用于生产。
 
+### 4.5.1 独立的新增/编辑页（不进侧边栏的页面）
+
+框架自带的增删改都是弹窗表单。业务复杂到弹窗放不下时，做一个独立页面，
+**不要**为此在侧边栏加一项——那会让菜单被一堆"新增 XX""编辑 XX"塞满。
+
+做法是在 `sys_menu` 建一条隐藏菜单：
+
+| 列 | 取值 |
+|---|---|
+| `menu_type` | `MENU` |
+| `path` / `component` | 照常填，页面靠它生成路由 |
+| `visible` | `0` |
+| `active_path` | 所属列表页的 `path`，如 `/system/user` |
+| `perm_code` | 留空 |
+
+四条必须知道的：
+
+1. **`visible = 0` 是"不进侧边栏"，不是"停用"**。记录照常下发、路由照常生成，
+   **能不能访问完全由角色授权决定**（`SysMenuService.treeOf()` 刻意不按 `visible` 过滤）。
+   反过来说，隐藏页**必须在角色授权树里勾选**，否则拿不到路由、敲 URL 落 404——
+   而它在侧边栏本来就看不见，症状不指向"忘了授权"。
+2. **`active_path` 不填的话，进入该页后侧边栏一项都不高亮、面包屑断在父级。**
+   它对应前端路由的 `meta.activePath`。
+3. **权限点复用列表页的 `xxx:add` / `xxx:edit`，不要新建**。隐藏菜单的 `perm_code`
+   留空即可——它的职责只是产生路由并参与授权，按钮级权限仍挂在列表页那几条 BUTTON 上。
+4. **详情页用 query 传 id，不要用路径参数**。前端由 `path` 派生路由 `name`
+   （`/` 换成 `-`），`/system/user/edit/:id` 会得到含冒号的 `system-user-edit-:id`。
+   写 `/system/user/detail?id=1` 更干净。
+
+存量库升级需手动加列（`schema-rbac.sql` 是 `CREATE TABLE IF NOT EXISTS`）：
+
+```sql
+ALTER TABLE sys_menu ADD COLUMN active_path VARCHAR(191) NULL
+  COMMENT '侧边栏高亮路径' AFTER visible;
+```
+
+> 另一类"页面必须存在但不该受菜单管理约束"的情况——个人中心这种**所有用户都该有、
+> 不该逐角色授权**的页面——走前端本地静态路由（`router/routes/core.ts` 的 `Root.children`
+> 加一条 `meta.hideInMenu`），不进 `sys_menu`。注意这类路由**不能**列进
+> `routes/index.ts` 的 `coreRouteNames` 白名单：守卫命中白名单会在 `generateAccess()`
+> 之前早退，而 `accessMenus` 不持久化，直接刷新该页面就得到"页面正常、侧边栏全空"。
+
+
 
 ### 4.6 插件
 
