@@ -6,11 +6,52 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-08。新增「隐藏菜单」能力（见下节，含一处 schema 变更与语义变更），
-`framework` / `frontend` / `docs` 均已提交 `main`、未推远端；非代码层优化 Phase 1~4 已全部完成；
-另起了面向使用者的文档站骨架 `docs/site/`（VitePress，见下节）。
+**最后更新：2026-09-11。菜单管理的图标字段从纯文本框升级为可视化选择器（见下节，纯前端改动、
+无 schema 变更，尚未提交）。此前的「隐藏菜单」能力、非代码层优化 Phase 1~4、面向使用者的
+文档站骨架 `docs/site/`（VitePress）均已完成（见下）；`framework` / `frontend` / `docs`
+的既有提交均在 `main`、未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-11：菜单管理「图标」字段改为可视化选择器
+
+起因是一个提问：菜单管理里的图标是纯文本框，placeholder 只举了一个 `lucide:users`，
+使用者不知道该填什么、填错也没有任何反馈，只能保存后回侧边栏看效果。
+
+**已完成（`frontend`）**
+
+- 复用已有的 `IconPicker`（`@describeadmin/ui` 导出）当选择器：6 列图标网格 +
+  关键词搜索 + 分页 + 悬浮显示图标名，图标集锁定 `lucide`（与 `seed-rbac.sql`
+  里既有数据一致；清单仍走 iconify 公共 API，内网/离线空白是现状、本次未改变）。
+- `IconPicker`（`packages/effects/common-ui/src/components/icon-picker/`）的
+  **向后兼容增强**，四个可选 prop 默认行为与原来一致：
+  `contentClass` / `zIndex`（面板层级，内联样式下发）、`clearable`（面板内「清空」入口）。
+  另外：加载中 / 加载失败（带重试）/ 无匹配 三态区分；当前值不在图标集内时面板顶部提示；
+  修正分页 `:items-per-page` 写死 36（传别的 `pageSize` 时分页器会算错）；修掉触发器上
+  写成字面量的 `aria-expanded="visible"`。
+- `fetchIconsData` **失败改为向上抛**，并把失败的 Promise 从在途表里摘掉——此前失败被吞成
+  空数组，界面只能显示「暂无数据」（与「图标集里真没有」无法区分），且「重试」永远命中
+  已 reject 的旧 Promise，点了没反应。顺带把在途表换成 `Map`。
+- 菜单页（`packages/effects/system-ui/src/views/menu/index.vue`）：图标项换成只读选择器
+  （挡住手输），`zIndex=3000` 抬到 ElDialog（弹层层级 2000 起自增）之上；列表新增
+  「图标」列，用侧边栏同一个 `VbenIcon` 渲染；`@describeadmin/ui` 白名单补导出
+  `VbenIcon`，不给 system-ui 新增依赖。`data-testid="menu-icon-input"` 锚点保持不变。
+  「图标 / 类型 / 显示」三列的表头与内容统一居中——图标必须带 `inline-block`：
+  Tailwind preflight 把 `svg` 设成 `display: block`，块级元素不吃单元格的
+  `text-align: center`，否则表现为「表头居中、图标贴在格子左边」。
+- 数据形态不变：仍只存 iconify 名称（`sys_menu.icon` 依旧是 `VARCHAR(64)`），
+  后端与表结构零改动。
+- 新增 `icon-picker/__tests__/icons.test.ts` 3 条：成功合并 + 缓存命中、失败抛出且
+  「重试」真的重新发请求、并发调用共享同一次请求。
+
+**验证**：`pnpm check:type`（admin 的 vue-tsc 会把 system-ui / common-ui 源码一并检查）、
+`pnpm test:unit` 312 通过（唯一失败是 `@core/preferences` 的既有快照，与本次无关）、
+改动文件 ESLint 与 cspell 干净。浏览器真实链路（Chrome → vite dev server → 代理 →
+真实后端 → MySQL）实测：面板 z-index 3000 > 弹窗遮罩 2003/2004 且位于最上层可点选；
+搜索 `users` 过滤到 2 项并点选回填；「清空」置空并关闭面板；保存后列表图标列与侧边栏
+同步为新图标，改回 `lucide:gauge` 后再次同步（业务数据已复原）。控制台无新增报错/警告。
 
 ***
 
