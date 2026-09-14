@@ -6,12 +6,59 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-11。菜单管理的图标字段从纯文本框升级为可视化选择器（见下节，纯前端改动、
-无 schema 变更，尚未提交）。此前的「隐藏菜单」能力、非代码层优化 Phase 1~4、面向使用者的
-文档站骨架 `docs/site/`（VitePress）均已完成（见下）；`framework` / `frontend` / `docs`
-的既有提交均在 `main`、未推远端。
+**最后更新：2026-09-14。用户/角色/部门/在线用户/字典/参数配置六个系统管理列表页新增搜索栏，
+操作日志的手拼搜索栏改用同一套封装（见下节，前后端均有改动，尚未提交）。此前的菜单图标
+选择器、「隐藏菜单」能力、非代码层优化 Phase 1~4、面向使用者的文档站骨架 `docs/site/`
+（VitePress）均已完成（见下）；`framework` / `frontend` / `docs` 的既有提交均在 `main`、
+未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-14：系统管理列表页统一加搜索栏
+
+起因：`frontend` 之前给 `@describeadmin/create-app` 模板加了一个 `useSearchForm` 组合式
+函数（折叠检索栏 + 搜索/清空按钮 + 卡片背景的统一封装），但一直没有落地页面用它——
+本轮把它铺到系统管理的六个列表页，并顺带把操作日志页原本手拼的筛选行换成同一套封装。
+
+**已完成（`frontend`）**
+
+- `packages/effects/system-ui/src/composables/useSearchForm.ts`：`create-app` 模板同名文件
+  在本包的对应实现，两者不能合并——本包不知道消费方 app 声明的 `ComponentType`，
+  只能退回 `@describeadmin/ui` 默认导出的 `VbenFormSchema`（其 `component` 字段类型底层是
+  `BaseFormComponentType`，本就带 `string` 转义），字段用 `'Input'`/`'Select'`/`'DatePicker'`
+  等 adapter 别名——这些组件由消费方 app 的 `initComponentAdapter()` 注册进同一个全局
+  `COMPONENT_MAP` 单例，本包运行时不需要重新声明。
+- 用户 / 角色 / 参数配置：搜索栏走后端分页查询（新增 `UserQuery`/`RoleQuery`/`ConfigQuery`），
+  对应后端 `buildListWrapper` 覆写（见下）。
+- 字典管理：字典类型面板走后端分页查询（`DictTypeQuery`）；字典数据面板本来就是整批拉取
+  + 客户端按类型过滤（见 `getDictDataListApi` 的既有注释），本轮只是在客户端过滤链上加一个
+  按标签关键词的条件，未改后端。
+- 部门管理：部门是整棵树一次性拉取、没有分页（`getDeptTreeApi`），搜索因此是纯客户端过滤——
+  按名称/状态过滤时保留命中节点的祖先链，不让匹配到的子部门因父节点被过滤掉而"消失"。
+- 在线用户：新增 `username` 子串过滤，应用层做（数据源是 `TokenStore.listActive()` 的内存
+  快照，没有表可下推 SQL）。
+- 操作日志：原本手拼的 `ElInput`/`ElSelect`/`ElDatePicker` + 查询/重置按钮行改用
+  `SearchFormBar`；时间范围拆成开始/结束两个独立 `DatePicker` 字段而不是一个 `daterange`
+  型字段——后者要靠 adapter 把单个 fieldName 拆成 `[name, name_end]` 两个值，这条路径在本仓
+  还没有别的页面验证过，拆成两个平级字段直接对应 `OperLogQuery.start`/`.end`，是更少假设的写法。
+
+**已完成（`framework`，`framework-system-starter`）**
+
+- `SysUserController`/`SysRoleController`/`SysDictTypeController`/`SysConfigController`
+  新增 `buildListWrapper` 覆写，写法与 `codegen` 生成物的既有约定一致（`likeRight` 右模糊、
+  `eq` 精确匹配、空值不参与筛选）。此前这四个 Controller 都没覆写这个钩子，前端传筛选参数
+  也是静默无效——「搜索框能点、后端不接」比没有搜索框更容易误导。
+- `SysOnlineController#list` 新增可选 `username` 查询参数，在 `TokenStore.listActive()` 的
+  内存快照上过滤后再切片分页。
+- 部门（`SysDeptController`）、字典数据（`SysDictDataController`）未改——理由见上，前端侧
+  就地过滤已经够用。
+
+**验证**：`framework-system-starter` 单模块 `mvn compile` 通过；`apps/admin` 的
+`vue-tsc --noEmit`（含 system-ui/common-ui 源码）通过；改动文件 ESLint 干净。
+未跑 `-Pit` 行为门禁（需要 Testcontainers 拉真实 MySQL）、未做浏览器真实链路验证——
+下次接手先补这两项，尤其是 `buildListWrapper` 的筛选条件要对着真实数据核实一遍。
 
 ***
 
