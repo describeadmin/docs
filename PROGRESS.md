@@ -6,13 +6,73 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-14。用户/角色/部门/在线用户/字典/参数配置六个系统管理列表页新增搜索栏，
-操作日志的手拼搜索栏改用同一套封装（见下节，前后端均有改动，尚未提交）。此前的菜单图标
+**最后更新：2026-09-15。排查并修复了 qujiang-hrms-web（业务方消费框架）字典管理页面分栏失效
+问题，根因是 turbo 构建缓存看不见 `@core/base/design` 对其他包源码的隐式依赖（Tailwind
+`@source` 跨包扫描），导致 `pnpm build` 静默产出过期的 `core-design.css`（见下节）。
+2026-09-14：用户/角色/部门/在线用户/字典/参数配置六个系统管理列表页新增搜索栏，
+操作日志的手拼搜索栏改用同一套封装（前后端均有改动，尚未提交）。此前的菜单图标
 选择器、「隐藏菜单」能力、非代码层优化 Phase 1~4、面向使用者的文档站骨架 `docs/site/`
 （VitePress）均已完成（见下）；`framework` / `frontend` / `docs` 的既有提交均在 `main`、
 未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-15：qujiang-hrms-web 字典管理页面分栏失效 —— 根因是 turbo 缓存看不见 Tailwind 跨包扫描依赖
+
+起因：业务方（qujiang-hrms-web，以 npm 依赖消费框架）反馈字典管理页面左右分栏
+（`grid-cols-1 lg:grid-cols-5` + `lg:col-span-2`/`lg:col-span-3`）失效，右侧「字典数据」
+面板要么溢出、要么退化成上下堆叠。此前已有一版排查报告，怀疑是 `@tailwindcss/vite` 在
+Rolldown 驱动的 `vite@8` 下对同一 CSS 入口重复编译、第二次空结果覆盖第一次——本轮实测
+**未能复现这个结论**（见下），实际根因在更上游。
+
+**排查过程**：
+
+- 在 `@core/base/design` 包插桩 `@tailwindcss/vite` 并反复重建 5 次（用 `diff`/`grep -F`
+  严格核对，避免 shell 里 `lg\\:col-span-2` 这类双反斜杠转义导致的假阴性——第一轮自己也踩了
+  一次这个坑），当前源码在本机稳定产出正确的 `lg:col-span-2` 等规则，未见候选类被清零覆盖的
+  情况。4 个 CSS 入口（global/nprogress/transition/ui）确系并发独立编译，但最终被正确拼接，
+  不存在互相覆盖——原报告"重复调用覆盖"的结论不成立。
+- 真正问题在更上游：`qujiang-hrms/.describeadmin-local/describeadmin-core-design-0.2.2.tgz`
+  （业务方消费的本地 tarball）文件时间戳虽是当天，但内容和 8 月底的产物字节完全相同——
+  打包时用的是没有重新构建的旧 `dist/`。
+- "没有重新构建"还有更深一层原因：`pnpm build`（`turbo build`）对 `@core/base/design` 是
+  **FULL TURBO 全缓存命中**——turbo 的任务依赖图只看 `package.json` 的 `dependencies`
+  （这个包只依赖 `@describeadmin/tailwind-config`），看不到 `theme.css` 里
+  `@source '../../../packages/'` 等 4 条指令带来的"CSS 编译内容实际依赖全仓库任意包源码"
+  这层隐式依赖。于是只要改动发生在 `system-ui`/`apps` 等**其他**包，`core-design` 自己的
+  输入哈希不变，turbo 就会放心回放旧缓存——**跑了 `pnpm build`、显示成功、产物却是错的**，
+  没有任何报错信号，这也是它比原来怀疑的"Rolldown 重复编译"更隐蔽的地方。
+
+**已修复**：
+
+- 手动 `turbo build --filter=@describeadmin/core-design --force` 重建 + `pnpm pack` 重新
+  打包 + 业务方侧 `pnpm install --update-checksums`（踩坑记录：tarball 内容真变化后，
+  普通 `pnpm install` 甚至 `--force` 都不会重新校验 `file:` 依赖的 hash，会继续吃 store 里的
+  旧内容；只有整个删掉 `node_modules` 重装才会触发 pnpm 的完整性校验，报
+  `ERR_PNPM_TARBALL_INTEGRITY`，这时候用 `--update-checksums` 确认是本地合法重建而不是
+  供应链问题）。已核实 `qujiang-hrms-web` 的
+  `node_modules/@describeadmin/core-design/dist/core-design.css` 现含 `lg:col-span-2` 等
+  目标规则。
+- 新增 `frontend/packages/@core/base/design/turbo.json`：给 `build` 任务的 `inputs` 补上
+  `$TURBO_ROOT$/packages/**`、`apps/**`、`docs/**`、`playground/**`（镜像 `theme.css` 自己的
+  4 条 monorepo `@source`），让 turbo 的缓存 key 能感知到这层隐式依赖。
+  ⚠️ 代价：这个 glob 范围较大，实测下 turbo 对这个任务的**重复缓存命中变得不稳定**
+  （连续两次不改任何东西也经常 miss；缩小到单个子包目录时缓存能正常命中）——具体是 turbo
+  在这个规模下哈希计算的哪个环节不稳定未查。但"每次都老实重新跑一遍 vite build（~1-3s）"
+  换来的是"内容永远正确"，优先级上可以接受，没有为了缓存命中率继续深挖。
+- 未动 workspace 根目录 `.local-tarballs/`（Aug 28、`0.1.0` 版本）——更早的历史遗留产物，
+  与本次问题无关。
+
+**下一步 / 待办**：
+
+- 其余 28 个 `@describeadmin/*` 包目前没发现类似"产物内容依赖其他包源码但 turbo 看不到"的
+  情况（只有 `core-design` 做 Tailwind 编译），但以后若有别的包出现同类模式（编译期扫描/聚合
+  其他包内容），照这次 `turbo.json` 的写法处理。
+- `qujiang-hrms-web` 的 `pnpm-lock.yaml` 改动（integrity 刷新）尚未提交——那是业务方自己的
+  仓库，且里面还有一条无关的 `src/composables/useSearchForm.ts` 在途改动，本轮未动它，
+  留给业务方自己处理/提交。
 
 ***
 
