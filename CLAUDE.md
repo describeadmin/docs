@@ -176,6 +176,30 @@ unzip -l ~/.m2/repository/com/baomidou/<制品>/3.5.17/<制品>-3.5.17.jar | gre
 
 业务代码继承框架的 `BaseService` / `BaseController` 即可，正常情况下不需要直接 import 这些类。
 
+### 3.8 ⚠️ `UpdateWrapper.set(col, null)` 在国产化库上报「无效的列类型」
+
+MyBatis-Plus 的 `wrapper.set(column, null)` 生成的是**参数占位符**（`col = ?` 绑 `null`），
+不是字面量 `NULL`。本项目**刻意不配** `mybatis-plus.configuration.jdbc-type-for-null`
+（那是全局开关，会改变所有业务实体的 null 绑定行为），MyBatis 于是按 `JdbcType.OTHER`
+调 `setNull` —— MySQL 接受，**达梦 / 金仓直接报「无效的列类型」**。
+
+要把某列写回 `NULL`，用字面量 SQL：
+
+```java
+// ❌ 只在 MySQL 上能跑
+wrapper.set("perm_code", null);
+// ✅
+wrapper.setSql("perm_code = NULL");
+```
+
+拼进 `setSql` 的列名必须是**代码里的字面量**，不能来自请求参数——那是注入面。
+
+与 3.6、3.7 同属「只在特定环境炸、症状不指向真因」那一类：本地 MySQL 怎么测都是绿的，
+换到业主的国产化库上才炸，且报错指向"列类型"而真因是"框架绑了个 OTHER 类型的 null"。
+
+首次踩坑记录：`SysMenuService.clearColumnIfNull`（菜单编辑清空 `path` / `component` 等
+5 个可空列）。
+
 ---
 
 ## 4. 代码约定

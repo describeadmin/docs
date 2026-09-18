@@ -6,7 +6,11 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-15。排查并修复了 qujiang-hrms-web（业务方消费框架）字典管理页面分栏失效
+**最后更新：2026-09-18。对 `framework` 仓 `v0.2.1..HEAD`（0.2.2 全部未发布的功能改动）
+做了一轮代码审查，7 条 finding 中落地 6 条（第 7 条「登录锁定菜单存量库迁移」经决定不做，
+本阶段不考虑历史兼容），另附带修了 2 处同形缺陷。改动集中在 `framework-system-starter`，
+`api/` 包签名不变，全部折进未发布的 0.2.2（见下节与 `framework/CHANGELOG.md`）。
+2026-09-15：排查并修复了 qujiang-hrms-web（业务方消费框架）字典管理页面分栏失效
 问题，根因是 turbo 构建缓存看不见 `@core/base/design` 对其他包源码的隐式依赖（Tailwind
 `@source` 跨包扫描），导致 `pnpm build` 静默产出过期的 `core-design.css`（见下节）。
 2026-09-14：用户/角色/部门/在线用户/字典/参数配置六个系统管理列表页新增搜索栏，
@@ -16,6 +20,39 @@
 未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-18：framework 0.2.2 发版前代码审查 —— 6 条缺陷修复
+
+审查范围 `v0.2.1..HEAD` 的 `*/src/main/*` 与 `pom.xml`（约 1850 行 diff），
+覆盖 0.2.2 的全部未发布改动：锁能力（`LockOperations` / `@DistributedLock` / `UniqueGuard`）、
+系统模块并发唯一性接入、隐藏菜单 + `active_path`、空权限标识崩溃修复、列表筛选条件。
+
+**这批缺陷的共同特征是症状不指向真因**，逐条的完整描述见 `framework/CHANGELOG.md`
+的 0.2.2 Bug Fixes，这里只记状态：
+
+| # | 缺陷 | 落点 |
+|---|---|---|
+| 1 | 逻辑删除的角色仍下发权限点与菜单路由（`hasRole` 失效而 `hasAuthority` 照过） | `SysRelationMapper` 两条 `@Select` 补 `JOIN sys_role` + `r.deleted = 0` |
+| 2 | `getIfAvailable()` 多候选时抛异常，恰好击穿它要保护的多数据源场景 | `SysUserService` 改 `getIfUnique()` |
+| 3 | `path` / `component` 永远清不回 `NULL`（漏在 `normalizeBlankToNull` 之外） | `SysMenuService` 补两列 |
+| 4 | `set(col, null)` 绑参数而非字面量 NULL，达梦 / 金仓报「无效的列类型」 | `SysMenuService` 改 `setSql`，并记入 `CLAUDE.md` §3.8 |
+| 5 | 唯一标识为空时校验静默通过，最终以 500 收场（应为 400） | `SysUser`(username) / `SysRole` / `SysDictType` / `SysConfig` 四处 `save` 补非空校验；三处 `updateById` 的空白非 null 一律 400 |
+| 6 | `LockStartupValidator` 的 `MetadataLookup` 入选条件注释说反 | 只改注释（代码本身正确，照注释"修正"会让门禁失守） |
+
+其中 #5 的 username 与 `updateById` 空串两处是审查之外发现的同形缺陷，一并修了。
+
+**决定不做**：`seed-rbac.sql` 的「登录锁定」菜单在 0.2.1 里把 `path` / `component` 写成了
+`'/system/security'` / `'system/security/index'`，HEAD 改成 `NULL` 但被同句的 `NOT EXISTS`
+幂等守卫挡住，只对全新库生效。本阶段不考虑历史兼容，不加迁移语句。
+
+**门禁**：新增 `framework-it/SystemModuleFixesIT`（逻辑删除角色 / 菜单可空列清空 /
+空标识 400 三组）与 `framework-system-starter/SysUserServiceTransactionFallbackTest`
+（0、1、2 个 `TransactionTemplate` 候选三种形态）。`mvn -Pit -pl framework-it verify`
+在 `mysql:5.7` 与 `mysql:8.4` 两条线各 112 个断言全绿。
+
+改动已提交 `framework` 仓 `main`，未推远端。
 
 ***
 
