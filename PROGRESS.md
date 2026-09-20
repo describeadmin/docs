@@ -25,6 +25,39 @@
 
 ***
 
+## 2026-09-20：角色「排序」列不起任何作用 + 同 sort 时首页仲裁会漂移
+
+角色管理页有「排序」这一列，填什么都看不出区别。真因是
+`SysRoleController.buildListWrapper` 只加了两个筛选条件，**没有
+`orderByAsc("sort")`**，列表返回的是主键顺序。部门 / 菜单 / 字典数据都在各自
+Service 里按 `sort` 排（`SysDeptService` / `SysMenuService` / `SysDictDataService`），
+只有角色漏了。
+
+`sort` 并非无用字段——它唯一真正生效的地方是 `SysRelationMapper` 的两条角色查询
+带了 `ORDER BY r.sort`，`HomePathResolver` 据此「取排序靠前且非空的第一个 home_path」
+决定多角色用户的登录首页。但列表不按它排，这层含义在界面上完全看不见。
+
+顺带修掉一个更隐蔽的：那两条 `ORDER BY r.sort` **没有二级排序键**，而 `sort`
+允许重复（默认值 0，实测库里多个角色都是 0 属常态）。同值行的相对顺序由数据库
+自行决定，于是用户身兼两个同 `sort` 且都配了 `home_path` 的角色时，**登录后落哪个
+首页会在两次之间漂移**，而数据与配置一字未改。列表分页同理：不稳定的排序会让
+翻页重复或漏掉记录。
+
+**修复**（`framework-system-starter`）：`SysRoleController.buildListWrapper` 加
+`orderByAsc("sort", "id")`；`SysRelationMapper` 的 `selectRoleCodesByUserId` 与
+`selectDataScopesByUserId` 两条 SQL 的 `ORDER BY r.sort` 改为 `ORDER BY r.sort, r.id`。
+无 schema 变更，无 `api/` 包签名变更。
+
+**门禁**：新增 `RoleSortOrderIT` 两条——列表按 sort 升序 / 同 sort 按 id 升序
+（把 `orderByAsc` 注释掉即失败，已实测确认是真门禁而非摆设），以及同 `sort` 时
+`HomePathResolver` 的仲裁结果确定。`mvn -Pit -pl framework-it -am verify` 全量
+108 条全绿。
+
+前端无改动——`views/role/index.vue` 只是渲染这一列，排序本来就该在服务端做。
+改动已提交 `framework` 仓 `main`（`37ab6c4`），未推远端。
+
+***
+
 ## 2026-09-20：用户列表「部门」列整列空白
 
 `SysUser.deptName` 标了 `@TableField(exist = false)`，前端 `views/user/index.vue`
