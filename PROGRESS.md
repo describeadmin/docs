@@ -6,7 +6,9 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-18。对 `framework` 仓 `v0.2.1..HEAD`（0.2.2 全部未发布的功能改动）
+**最后更新：2026-09-20。修了用户管理列表「部门」列整列空白——`SysUser.deptName` 是
+非持久化展示字段，全框架没有任何一处给它赋值（见下节），折进未发布的 0.2.2。
+2026-09-18：对 `framework` 仓 `v0.2.1..HEAD`（0.2.2 全部未发布的功能改动）
 做了一轮代码审查，7 条 finding 中落地 6 条（第 7 条「登录锁定菜单存量库迁移」经决定不做，
 本阶段不考虑历史兼容），另附带修了 2 处同形缺陷。改动集中在 `framework-system-starter`，
 `api/` 包签名不变，全部折进未发布的 0.2.2（见下节与 `framework/CHANGELOG.md`）。
@@ -20,6 +22,32 @@
 未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-20：用户列表「部门」列整列空白
+
+`SysUser.deptName` 标了 `@TableField(exist = false)`，前端 `views/user/index.vue`
+的表格列也一直绑在它上面，但**全框架没有任何一处调用 `setDeptName`**——用户列表走
+`BaseController` 的通用列表端点直接返回实体，这个字段永远是 `null`。
+
+症状不指向真因：接口 200、其余列都正常、用户编辑弹窗里的部门也选得中，
+只有列表里那一列整列空白，看起来像前端没取到字段。
+
+**修复**（`framework-system-starter`）：`SysUserService` 覆写
+`page(PageQuery, Wrapper)`，按当页出现的 `dept_id` 去重后回查一次 `sys_dept`
+批量回填名称。不写连表 SQL——连表会绕开 `sys_user` 上的行级数据权限与
+`@TableLogic`，要在自定义 SQL 里把这两件事重写一遍；`sys_dept` 没有登记进数据权限
+（`FrameworkSystemAutoConfiguration` 只登记了 `sys_user`），这次回查不受过滤影响。
+构造函数因此新增 `SysDeptMapper` 参数（`SysUserService` 不在 `api/` 包下，
+不属兼容性承诺范围）。
+
+**门禁**：`SystemModuleFixesIT` 新增「用户列表带出部门名称」一组，按具体值断言
+`deptName` 等于部门真实名称、未设部门的用户仍为 `null`——只比对行数看不出这个缺陷
+（`CLAUDE.md` §3.6）。`mvn -o -Pit -pl framework-it verify -Dit.test=SystemModuleFixesIT`
+7 个测试全绿，`framework-system-starter` 80 个单测全绿。
+
+前端无改动。改动已提交 `framework` 仓 `main`，未推远端。
 
 ***
 
