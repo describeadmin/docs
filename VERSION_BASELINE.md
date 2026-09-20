@@ -116,6 +116,10 @@ CLAUDE.md 与 develop_plan.md 用编号引用这些坑。🔴 = 会静默出错 
 | ⑱ | archetype 发布到 Central **不需要** sources / javadoc 附件 | 第八轮 |
 | 🔴 ⑲ | 带 `datetime` 字段的模块表单提交一直是坏的，且报 **500 不是 400**——已随 `FrameworkJsonModule` 的时间入参「进宽」修复 | 第九轮 |
 | 🔴 ⑳ | `GlobalExceptionHandler` 把所有请求体解析失败都报成 500（应 400）——与 ⑲ 相互独立 | 第九轮 |
+| 🔍 ㉑ | `strictInsertFill` 依赖 `TableInfo`，拿普通 POJO 的 `MetaObject` 调它不填充任何字段**也不报错**——又一个"看起来跑过了"的形态 | 第九轮 |
+| 🔴 ㉒ | ElTree 默认的父子联动模式下，父节点勾选态由子节点推导，**「父被授权、子全不授权」根本无法表达**——而框架的父 `MENU` 自己就带 `xxx:list`，于是「只给列表权限」这个最常见的授权诉求做不到，且界面上看不出是做不到（勾上去松手就弹回来，像是点歪了） | 第十轮 |
+| 🔴 ㉓ | 「分配数据权限」把 `getHalfCheckedKeys()` 一并提交 = **数据权限越授**：只勾了几个子部门，父部门因半选被带进去，角色于是能看到父部门的业务数据。那段注释照搬了菜单树的理由，而部门树根本不用于渲染，`IN (...)` 是精确成员判定 | 第十轮 |
+| 🔴 ㉔ | JUnit 5 的 `@Timeout` 默认 `SAME_THREAD`，**在方法返回之后才比对耗时**——打不断死循环，用例既不通过也不失败，整个 surefire fork 永远挂着，CI 表现为构建超时而非测试失败。防死循环的用例必须写 `threadMode = SEPARATE_THREAD` | 第十轮 |
 
 ## 三、冲突与处置
 
@@ -915,3 +919,68 @@ MapperBuilderAssistant assistant = new MapperBuilderAssistant(configuration, "")
 TableInfoHelper.initTableInfo(assistant, YourEntity.class);
 ```
 
+---
+
+## 八、第十轮：角色授权树（2026-09-20，Element Plus 2.14.0 实测）
+
+### 🔴 发现 ㉒：ElTree 的父子联动模式表达不出「只给列表权限」
+
+框架的菜单模型里，父 `MENU` 节点自己就带 `<模块>:<对象>:list`，它的 `BUTTON` 子节点
+才是 add/edit/remove。于是「只给列表权限」= 父勾、子全不勾。
+
+而 ElTree 默认（非 `check-strictly`）模式下**父节点的勾选态由子节点推导**：
+子节点全不勾，父节点必然是未勾。这个授权状态**根本无法表达**，
+且界面上看不出是做不到——勾上去、松手就弹回来，像是点歪了。
+
+原先的代码用「写入时补提交半选父节点 + 读回时降解成叶子」这一对补丁绕开冲突。
+那对补丁自身还留了个盲区：**被授权 + 有子节点 + 子节点全未授权**的父节点，
+回填时会被 `leafCheckedKeys` 丢掉——管理员打开弹窗点一下「确定」就静默撤销了该授权。
+
+处置：两棵授权树改 `check-strictly` + 手写单向级联（`composables/useGrantTree.ts`），
+勾选集合的「对祖先闭包」下沉到后端唯一写入口 `SysRoleService.assignMenus`。
+约定见 CLAUDE.md 4.5.2。
+
+### 🔴 发现 ㉓：「分配数据权限」提交半选父节点是数据权限越授
+
+`submitAssignDept` 过去连 `getHalfCheckedKeys()` 一起提交，注释写的理由是
+「只交全选节点会让只授了子部门的角色在部门树里丢掉父级挂载点」——**照搬自菜单树，
+结论是错的**。部门树在那里根本不用于渲染，它只是选值：
+`DeptDataPermissionHandler` 的 CUSTOM 档生成的是 `dept_column IN (...)`，
+精确集合成员判定（同类的 `DEPT_AND_CHILD` 档才用 `FIND_IN_SET(..., ancestors)` 往下展开）。
+
+于是「管理员只勾了几个子部门」实际写进去的是「子部门 + 半选的父部门」，
+**角色因此能看到父部门的业务数据**。改成 `check-strictly` 后半选不再产生，越授自然消失。
+
+存量 `sys_role_dept` **刻意不清理**：删掉已被带进去的父部门是**缩小**某个角色的数据范围，
+静默缩权比静默扩权更容易造成「业务突然看不到数据」且完全不指向真因。
+让它随下一次「分配数据权限」保存自然收敛。
+
+### 🔴 发现 ㉔：JUnit 5 的 `@Timeout` 默认打不断死循环
+
+给防死循环的用例挂 `@Timeout(5)` 是**假防护**。JUnit 5 的 `@Timeout` 默认
+`ThreadMode.SAME_THREAD`，它在测试方法**返回之后**才比对耗时——
+死循环里方法永远不返回，于是用例既不通过也不失败，整个 surefire fork 一直挂着。
+CI 表现为**构建超时**而不是测试失败，日志里没有任何东西指向那条用例。
+
+实测（`MenuAncestorClosureTest`，去掉 `walkUp` 里的 `visited` 守卫）：
+`@Timeout(5)` 跑满 600 秒未退出；改成
+`@Timeout(value = 5, unit = SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)`
+后 5.0 秒判失败，整个 run 10 秒结束。
+
+### Element Plus 2.14.0 `check-strictly` 的确切行为（查源码实测，非记忆）
+
+出处：`element-plus/es/components/tree/src/`。
+
+| 问题 | 事实 | 出处 |
+|---|---|---|
+| 能否运行时切换 | 能（`watch(() => props.checkStrictly, ...)`），但**不会重算已有勾选态** | `tree.vue_vue_type_script_lang.mjs:78-80` |
+| strict 下 `setCheckedKeys(keys)` | **精确回填、零级联**（先全清，再对命中节点 `setChecked(true, false)`） | `model/tree-store.mjs:175,190` |
+| strict 下是否产生半选 | **不会**（`reInitChecked` 三处都被 `!checkStrictly` 守住） | `model/node.mjs:48,293,356` |
+| `setChecked(key, v, deep=false)` | strict 下**只改这一个节点**，不碰祖先也不碰子孙 | `model/node.mjs:264` 早退 |
+| 勾选比对是否对 id 类型敏感 | **不敏感**：`nodesMap` 是普通 JS 对象，内部显式 `node.data[key].toString()` | `model/tree-store.mjs:184-185` |
+| `check` 事件签名 | `(data: TreeNodeData, info: CheckedInfo)`，第一个参数是 **data 对象不是 Node**；在 `nextTick` 里发出，payload 是那一刻的快照 | `tree-node.vue_vue_type_script_lang.mjs:122-135` |
+| 处理器里再调 `setChecked` 会不会递归触发 | **不会**，`check` 只由复选框的 `handleCheckChange` 发出 | 同上 |
+
+由此两条实现约束：回填直接 `setCheckedKeys(owned)` 即可（不需要先降解成叶子）；
+级联用逐节点 `setChecked(id, v, false)`，既显式又绕开 `handleDescendants` 那条
+「存在 disabled 且未勾选的叶子时把父节点反向改成半选」的边界。

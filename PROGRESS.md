@@ -6,7 +6,10 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-20。修了用户管理列表「部门」列整列空白——`SysUser.deptName` 是
+**最后更新：2026-09-20。角色授权树改 `check-strictly`，「只给列表权限」终于能表达了
+（父勾、子全不勾）；勾选集合的「对祖先闭包」下沉到后端唯一写入口 `assignMenus`；
+顺带修掉「分配数据权限」提交半选父节点造成的数据权限越授（见下节）。折进未发布的 0.2.2。
+2026-09-20：修了用户管理列表「部门」列整列空白——`SysUser.deptName` 是
 非持久化展示字段，全框架没有任何一处给它赋值（见下节），折进未发布的 0.2.2。
 2026-09-18：对 `framework` 仓 `v0.2.1..HEAD`（0.2.2 全部未发布的功能改动）
 做了一轮代码审查，7 条 finding 中落地 6 条（第 7 条「登录锁定菜单存量库迁移」经决定不做，
@@ -22,6 +25,58 @@
 未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-20：角色授权树表达不出「只给列表权限」+ 数据权限越授
+
+**症状**：想给一个角色只授「用户管理」的列表权限（看得到列表、不能增删改），做不到。
+在授权树里把「用户管理」下面的新增/编辑/删除逐个取消，父节点「用户管理」自己也跟着灭。
+
+**真因**：数据模型与 UI 语义冲突。父 `MENU` 节点自己带 `system:user:list`，
+而 ElTree 默认是父子联动、**父节点勾选态由子节点推导**，「父勾、子全不勾」不可表达。
+原先的「提交半选父节点 + 回填只取叶子」是一对绕开冲突的补丁，自身还留了个盲区：
+被授权且有子节点、但子节点全未授权的父节点，回填时会被丢掉，管理员点一下「确定」
+就静默撤销了该授权。详见 VERSION_BASELINE 发现 ㉒。
+
+**顺带发现的越授**（发现 ㉓）：「分配数据权限」也提交 `getHalfCheckedKeys()`，
+注释理由照搬自菜单树但结论是错的——部门树不用于渲染，CUSTOM 档生成的是
+`dept_id IN (...)`，半选的父部门被带进去 = 角色能看到父部门的业务数据。
+
+**改动**：
+
+后端（`framework-system-starter`）
+- 新增 `core/MenuAncestorClosure`：纯算法，把菜单 id 闭包为「自身 + 全部祖先」。
+  去重（`sys_role_menu` 主键是 `(role_id, menu_id)`，不去重会撞重复键）、
+  per-walk `visited` 防环（菜单管理页可以把 `parentId` 改成任意值）
+- `SysMenuService.withAncestors`：取 `id, parent_id` 两列建映射，刻意不缓存
+- `SysRoleService.assignMenus`：写入前闭包。**`menuIdsOf` 读回的可能多于传入的，这是设计**
+- `assignDataScopeDepts`：加 javadoc 写明**刻意不做**对称的闭包，挡住后来者
+
+前端（`@describeadmin/system-ui` / `apps/admin`）
+- 新增 `composables/useGrantTree.ts`（`pathToNode` / `descendantIds` / `cascadeCheck`）
+- `views/role/index.vue`：两棵授权树加 `check-strictly` + `@check` 单向级联，
+  删掉 `leafCheckedKeys` 与两处 `getHalfCheckedKeys()`，弹窗里加「已选 N 项」
+- `api/core/auth.ts` 的 `toRouteRecords` 改 `filter+map` 为 `flatMap`：
+  不可路由的节点把子节点**提升到本层**。补祖先之后，业主自建的、没填 `path` 的目录
+  会连整棵子树一起被过滤掉（子树只能经父节点递归取得）——这是本次改动唯一可能把
+  现状改坏的地方，同批修掉。`apps/admin` 与 `create-app/template` 两份同步
+
+测试
+- `MenuAncestorClosureTest` 14 例（含两条成环用例）
+- `useGrantTree.test.ts` 11 例，含「勾 MENU 再逐个取消按钮，剩下 DIR+MENU」的回归用例
+  ——这是 `system-ui` 包的第一个单测
+- `SystemModuleIT.assignMenusIsRebuild` → `...AndClosesOverAncestors`，
+  旧断言 `containsExactly(allMenuIds.get(0))` 会被闭包打破，而且它能否通过原本
+  **取决于 DB 返回顺序**（第一个 id 碰巧是根节点时闭包是空操作）
+- 两处都做了反向验证（摘掉实现，对应用例必须红），`@Timeout` 那条假防护就是这么发现的
+- `smoke.mjs` 补了授权弹窗六步用例，**尚未实跑**（见「下一步」）
+
+**存量数据不需要强制修复**：旧前端本来就提交半选父节点，`seed-rbac.sql` 给 ADMIN 授全部菜单，
+codegen 的 `grantToAdmin` 显式含根目录——三个来源都已闭包。只有第三方直接调
+`PUT /{roleId}/menus` 可能不闭包，而缺祖先的后果是可恢复且方向安全的（子菜单被提升到
+侧边栏顶层，难看但不是 404 更不是多出权限），重新保存一次授权即自愈。
+`sys_role_dept` 的存量父部门刻意不清理，理由见 VERSION_BASELINE 发现 ㉓。
 
 ***
 
@@ -361,6 +416,11 @@ Rolldown 驱动的 `vite@8` 下对同一 CSS 入口重复编译、第二次空�
 
 ## 下一步
 
+0. **跑一次 `smoke.mjs` 的授权树用例**（本轮新补，代码已在但**尚未实跑**）。
+   需要一套跑得起来的环境：MySQL + sample-backend（**必须重启**，闭包改动在
+   `framework-system-starter` 里，本地 `.m2` 已装 0.2.2）+ `pnpm dev`，
+   口令取自后端的 `.passwd`。`describe-business/.passwd` 与当前那个 8090 实例对不上，
+   登录会 401——注意后端有登录失败锁定策略，不要反复试。
 1. **`framework` / `frontend` 统一发版 `0.2.2`**（含锁能力 + 本轮非代码层优化）。
    发布前先把 Phase 2 深整理做完（见上）。`codegen` 已单独发 `0.2.2`。
 2. **阶段 H：厂商插件**（浙政钉登录用 `AuthProvider`、钉钉推送用 `NotifyChannel`）。
@@ -394,6 +454,27 @@ Rolldown 驱动的 `vite@8` 下对同一 CSS 入口重复编译、第二次空�
   通道，`docs/registry.md`"规划中"表里的"短信通道"尚未开工）；阶段 G 的厂商登录
   （浙政钉/企业微信）。
 
+**权限 / 授权**（本轮明确推后，非遗漏）
+
+- **跨模块下拉仍复用别模块的 `list` 权限点**。用户管理页要填「角色」「部门」两个选择器，
+  调的是 `/system/role` 与 `/system/dept/tree`，于是只授「用户管理」的角色会拿到 403；
+  为了让下拉出数据去授 `system:role:list`，侧边栏又会多出「角色管理」入口——两个都不是
+  想要的。方案是给这类数据单独开 `/options` 端点（返回 id + 显示名的最小形状，
+  **只要求登录、不挂权限点**），范式与措辞照 `SysDictDataController.byType`——
+  框架在**字典**那里已经解决过同一个问题，只是没提炼成通用约定。
+  `user/index.vue:302-306` 现在用单独 try/catch 绕过 403，那是绕行不是修复
+- **`role/index.vue` 自身也踩这个坑**：「分配菜单」弹窗要 `system:menu:list`、
+  「分配数据权限」弹窗要 `system:dept:list`。比上一条更难收口——同一页的「首页」选择器
+  需要 `menuType`/`path` 来判断哪些节点可选，通用的 `OptionItem` 形状覆盖不了
+- **按钮级 `v-access` 一个都没用上**。权限点已随 `/api/auth/me` 下发、
+  `hasAccessByCodes` / `v-access` 指令都是通的，但 `system-ui` 的所有视图都没用——
+  「新增/编辑/删除」按钮对任何能进入页面的人都可见，只靠后端 403 挡。
+  服务端已拦住（`PermissionEnforcementIT`），所以是体验问题不是安全问题：
+  没权限的按钮点下去得到 403 提示而不是消失。注意 `directive.ts` 只有 `mounted` 钩子、
+  用 `el.remove()`，不响应后续权限变化，补的时候要一并处理
+- **codegen 生成 2 段式权限点**（`project:list`），而框架自身与 CLAUDE.md 4.5 是 3 段
+  （`system:user:list`）。`BaseController.derivePermPrefix` 两边都兼容，但规范只写了 3 段
+
 **文档**
 
 - `develop_plan.md` 第十章路线图仍是 v0.4 的阶段 -1~6，与 A~G 分期并行存在——
@@ -418,6 +499,15 @@ Rolldown 驱动的 `vite@8` 下对同一 CSS 入口重复编译、第二次空�
    **只有第三处真正生效**。
 4. **0.x 期间不要相信小版本兼容**。SemVer 对 `0.x` 不作保证，本项目 0.2.0 就带过
    Breaking Change；插件对每个框架小版本都要重新验证。
+5. **授权集合对祖先闭包，在唯一写入口做**（`SysRoleService.assignMenus`）。
+   因此 `menuIdsOf` 读回的 id 可能多于传入的——**这是设计不是缺陷**，
+   直接调接口的脚本与测试都会看到这个差异。
+6. **部门数据权限刻意不闭包**，不要"补齐对称性"：菜单 id 是挂载点，部门 id 是
+   `IN (...)` 的行过滤值，给后者补祖先是越权而不是修复。
+7. **授权树不要去掉 `check-strictly`、也不要补 `normalizeIds()`**。
+   前者会让「只给列表权限」再次无法表达，后者是 ElTreeSelect 的 v-model 才需要的东西。
+8. **防死循环的测试必须写 `threadMode = SEPARATE_THREAD`**。JUnit 5 的 `@Timeout`
+   默认在方法返回之后才比对耗时，打不断死循环，CI 会表现为构建超时而非测试失败。
 5. **数据权限的多角色合并规则是"取最宽松的单一档位"，不是按角色把条件 OR 起来**。
    这是阶段 D 明确权衡过的简化：OR 拼接在"本部门及以下"与"自定义部门"混用时条件会
    变复杂，V1 用简单规则换低风险。改这条规则要同时改

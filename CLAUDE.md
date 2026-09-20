@@ -275,6 +275,9 @@ public Result<Void> resetPassword(...) { ... }
    接口会 403 而侧边栏根本没有入口，两个症状都不指向"忘了授权"。
 3. **权限快照在登录时确定**。改了角色授权不会对已登录会话实时生效，
    需重新登录或吊销令牌——这是不透明令牌设计的既有取舍。
+4. **父菜单自己也是一个权限点**。`DIR` 通常 `perm_code` 留空，但 `MENU` 带的是
+   `<模块>:<对象>:list`，它的 `BUTTON` 子节点才是 add/edit/remove。因此
+   「只给列表权限」= **勾父、不勾任何子**，授权树必须能表达这个状态（见 4.5.2）。
 
 排查时可用 `describeadmin.security.permission-enabled=false` 临时关闭校验，
 但关闭状态下**任何已登录账号都能调用任何接口**，权限点仍会下发给前端用于按钮显隐，
@@ -323,6 +326,74 @@ ALTER TABLE sys_menu ADD COLUMN active_path VARCHAR(191) NULL
 > 之前早退，而 `accessMenus` 不持久化，直接刷新该页面就得到"页面正常、侧边栏全空"。
 
 
+
+### 4.5.2 角色授权树：勾选集合对祖先闭包
+
+不变式：**`checked(x) ⟹ checked(parent(x))`**。
+「父勾了、子一个都不勾」**合法**——那正是 4.5 第 4 条说的「只给列表权限」；
+反过来「子勾了、父没勾」是无效授权。
+
+**闭包在唯一写入口做**：`SysRoleService.assignMenus` 把入参展开为「自身 + 全部祖先」
+再落库（`SysMenuService.withAncestors` → `MenuAncestorClosure`）。库里存的直接就是事实，
+`treeOf` 等读取口径不必各自再补一次。三条后果：
+
+1. **`menuIdsOf` 读回的 id 可能多于传入的，这是设计不是缺陷。** 直接调
+   `PUT /api/system/role/{roleId}/menus` 的脚本与测试都会看到这个差异。
+2. **只授某个按钮会连带授出其父菜单的 `xxx:list`**（父菜单自己带权限点）。
+   这在旧前端提交半选父节点时早已如此，变的只是"直接调接口"这条路径。
+3. 闭包只改 `sys_role_menu`，不改令牌里的权限快照——已登录会话仍需重新登录才生效（同 4.5 第 3 条）。
+
+**前端两棵授权树（分配菜单 / 分配数据权限）都是 `check-strictly` + 手写单向级联**
+（`composables/useGrantTree.ts`）：勾选时补祖先 + 带子孙，取消时只带走子孙、**祖先一律不动**。
+
+> ⚠️ **不要"顺手"去掉 `check-strictly` 恢复成 ElTree 默认的父子联动。**
+> 联动模式下父节点的勾选态由子节点推导，「父勾、子全不勾」**根本无法表达**，
+> 且界面上看不出是做不到——勾上去、松手就弹回来，像是点歪了。
+> 同理不要给授权树补 `normalizeIds()`：那个是 `dept`/`menu` 页给 **ElTreeSelect 的
+> v-model 严格相等**用的，ElTree 的勾选链路内部按字符串比对，不需要。
+
+**⚠️ DIR 的 `path` 不要留空。** `treeOf` 下发的是嵌套树，前端 `toRouteRecords` 对没有
+`path` 的节点不生成路由。该函数已改为**把不可路由节点的子节点提升到本层**，所以不会再
+丢整棵子树；但留空的目录会让层级塌掉（侧边栏平铺、面包屑断裂）。
+在补齐祖先之前这条路径很难走到——父目录往往根本不在授权集合里，孤儿节点被 `TreeBuilder`
+提升为根反而躲开了。
+
+**部门的「分配数据权限」刻意不做闭包，不要"补齐对称性"。** 两者的 id 语义根本不同：
+
+| | 菜单授权 | 部门数据权限 |
+|---|---|---|
+| id 的含义 | 树上的**挂载点**，子依赖父才能被渲染 | 一个**行过滤值** |
+| 底层 | 前端按父子关系生成路由 | `DeptDataPermissionHandler` 的 CUSTOM 档生成 `dept_id IN (...)`，精确集合成员判定 |
+| 补祖先的效果 | 修复「子路由没有挂载点」 | **让角色多看见父部门的业务数据**（越权） |
+
+**存量数据一般不需要处理。** 旧前端本来就提交半选的父节点，`seed-rbac.sql` 给 ADMIN
+授全部菜单，codegen 的 `grantToAdmin` 显式含根目录——三个来源都已经是闭包的。
+只有「第三方直接调 `PUT /api/system/role/{roleId}/menus`」可能留下缺祖先的数据，
+而它的后果可恢复且方向安全：缺祖先的子菜单会被提升到侧边栏顶层（难看，但不是 404，
+更不是多出权限），**任何角色重新保存一次授权即自愈**。
+
+确实想一次性补齐的业主可以执行下面这段（**先把 `INSERT INTO ... ` 换成 `SELECT` 看结果**，
+按菜单层级重复执行直到 0 行受影响；约定层级 DIR→MENU→BUTTON 即 2 次）：
+
+```sql
+-- 补齐 sys_role_menu 里缺失的父级授权。只用 JOIN 与 NOT EXISTS，不用 CTE / 窗口函数。
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT DISTINCT rm.role_id, m.parent_id
+FROM sys_role_menu rm
+JOIN sys_menu m ON m.id = rm.menu_id AND m.deleted = 0
+JOIN sys_menu p ON p.id = m.parent_id AND p.deleted = 0
+WHERE NOT EXISTS (
+  SELECT 1 FROM (SELECT role_id, menu_id FROM sys_role_menu) x
+  WHERE x.role_id = rm.role_id AND x.menu_id = m.parent_id
+);
+```
+
+> 子查询里套一层派生表是**刻意的**：MySQL 对「INSERT 的目标表出现在自己的子查询里」
+> 各版本容忍度不一，国产化库更保守，派生表强制物化可以绕开。
+
+`sys_role_dept` 的存量数据**不要清理**：删掉曾被半选带进去的父部门是**缩小**某个角色的
+数据范围，静默缩权比静默扩权更容易造成「业务突然看不到数据」且完全不指向真因。
+让它随下一次「分配数据权限」保存自然收敛。
 
 ### 4.6 插件
 
