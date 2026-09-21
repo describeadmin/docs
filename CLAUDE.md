@@ -395,6 +395,53 @@ WHERE NOT EXISTS (
 数据范围，静默缩权比静默扩权更容易造成「业务突然看不到数据」且完全不指向真因。
 让它随下一次「分配数据权限」保存自然收敛。
 
+### 4.5.3 前端按钮级权限
+
+后端把权限点随 `LoginUser.permissions` 一次下发（`POST /api/auth/login` 与
+`GET /api/auth/me` 都带），前端存进 `accessStore.accessCodes`。页面用
+`@describeadmin/access` 的 `usePermission(prefix)` + `v-if` 控制按钮显隐：
+
+```ts
+import { usePermission } from '@describeadmin/access';
+const { can, canAny } = usePermission('system:user');
+```
+
+```html
+<ElButton v-if="can('add')" data-testid="user-add-btn">新增</ElButton>
+
+<!-- 一个行操作权限都没有时整列不渲染，不留一条固定宽度的空白列 -->
+<ElTableColumn v-if="canAny('edit', 'remove')" label="操作" width="160" fixed="right">
+  <ElButton v-if="can('edit')" data-testid="user-edit-btn">编辑</ElButton>
+  <ElButton v-if="can('remove')" data-testid="user-delete-btn">删除</ElButton>
+</ElTableColumn>
+```
+
+五条必须知道的：
+
+1. **前端显隐只是体验，不是授权。** 强制校验在后端的 `@PreAuthorize` 与
+   `BaseController.requirePermission()`（4.5）。藏了按钮不等于接口安全——
+   任何"因为前端不显示所以后端可以不校验"的推理都是错的。
+2. **`prefix` 必须与三处口径一致**：`BaseController.permPrefix()` 的推导结果、
+   `seed-rbac.sql` / codegen 的 `menu-*.sql` 登记的 `perm_code`、这里传的字符串。
+   对不上的表现是**按钮一个都不显示**，而错误信息里没有任何东西指向前缀（同 4.5 第 1 条）。
+3. **不要改用现成的 `v-access:code` 指令。** 那是上游 vben 的代码，只有 `mounted` 钩子、
+   且用 `el.remove()` 把节点从 Vue 的虚拟 DOM 底下物理摘掉：权限码刷新后不重算
+   （`fetchUserInfo()` 每次刷新页面都回源 `/auth/me`），与 `ElTooltip`、兄弟 `v-if`
+   混用时 patch 行为不可控，而且第 1 段那个「整列是否渲染」它表达不了。指令本身保留不动。
+4. **不要把 `can('add')` 的结果存进普通 const**——那一刻就求值完了，之后再不更新。
+   在模板里直接调用（渲染副作用自然追踪 `accessCodes`），要缓存就用 `computed`。
+5. **弹窗的取消/确定、搜索栏的查询/重置一律不加**：能打开弹窗就说明已经通过了入口按钮的判定，
+   再判一次只是多一处会写错的地方。
+
+按钮被包在容器里时（如 `ElTooltip`），**`v-if` 挂容器**，否则会留下一个能 hover 出气泡、
+却没有按钮的空壳。
+
+codegen 为业务模块生成的列表页自带这一套（前缀取 `s.module()`，与 `MenuSqlGenerator`
+登记 `<module>:add/edit/remove` 同源）。
+
+> ⚠️ `describeadmin.security.permission-enabled=false` 时**接口不校验，但权限点照常下发**，
+> 于是按钮照常受控、接口完全不受控——界面看起来是对的（见 4.5 末尾）。
+
 ### 4.6 插件
 
 新增能力前先判断它该进核心还是做插件。满足下面任一条 → **必须做插件**：

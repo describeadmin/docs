@@ -6,7 +6,10 @@
 > 「已核验的事实」，`registry.md` 写「插件有哪些、怎么写」，本文件写**状态**。
 > 状态会过期，所以每次收工前更新它；论证不会过期，所以不要往这里写论证。
 
-**最后更新：2026-09-20。角色授权树改 `check-strictly`，「只给列表权限」终于能表达了
+**最后更新：2026-09-21。前端按钮级权限落地——八个系统页 + codegen 生成物按真实权限码
+显隐按钮（此前权限点下发了、也存下来了，但一个页面都没用）；顺带对齐三处
+`@PreAuthorize` 与种子数据不一致的权限点（见下节）。折进未发布的 0.2.2。
+2026-09-20：角色授权树改 `check-strictly`，「只给列表权限」终于能表达了
 （父勾、子全不勾）；勾选集合的「对祖先闭包」下沉到后端唯一写入口 `assignMenus`；
 顺带修掉「分配数据权限」提交半选父节点造成的数据权限越授（见下节）。折进未发布的 0.2.2。
 2026-09-20：修了用户管理列表「部门」列整列空白——`SysUser.deptName` 是
@@ -25,6 +28,57 @@
 未推远端。
 下一步是把 `framework` / `frontend` 统一发版 `0.2.2`。更早的逐条开发日志
 （0.2.2 锁能力、0.2.1、0.2.0、A~G 分期等）已移到 `PROGRESS.archive.md`。**
+
+***
+
+## 2026-09-21：前端按钮不看权限 —— 权限点下发了、存下来了，但一个页面都没用
+
+**症状**：给一个角色只授「用户管理」的列表权限（CLAUDE.md 4.5 第 4 条：父勾、子全不勾），
+该用户进用户管理后照样看得见「新增 / 编辑 / 删除 / 重置密码 / 分配角色」五个按钮，
+点下去才 403。其余七个系统页同样。
+
+**真因**：链路是通的，最后一段没接。后端 `LoginUser.permissions` 随
+`/api/auth/login` 与 `/api/auth/me` 一次下发（`SysRelationMapper.selectPermCodesByUserId`
+取该用户全部被授权节点的 `perm_code`，含 MENU 的 `:list` 与 BUTTON 的 `:add/:edit/:remove`），
+前端 `store/auth.ts` 登录与刷新两条路径都 `accessStore.setAccessCodes(me.permissions)`，
+`@describeadmin/access` 里 `hasAccessByCodes` / `v-access` 指令 / `<AccessControl>` 三件套
+也都在——**全仓 0 处使用**。按钮可见性实际只有「后端不给菜单 → 页面进不去」这一层粗粒度控制，
+同一页内「能看」与「能删」区分不开。
+
+**方案**
+
+- `@describeadmin/access` 新增 `usePermission(prefix)`，返回 `can(action)` / `canAny(...actions)`，
+  内部复用已有的 `hasAccessByCodes`。页面用 `v-if="can('add')"`。
+- 八个系统页（user / role / dept / menu / dict / config / oper-log / online）逐个接入。
+  **一个行操作权限都没有时整个 `ElTableColumn` 不渲染**，不留一条固定宽度的空白列。
+- codegen 的 `VueGenerator` 同步产出这一套，前缀取 `s.module()`，与 `MenuSqlGenerator`
+  登记 `<module>:add/edit/remove` 同源。
+- 顺带对齐三处后端权限点：`reset-password` / `assign-role` / `assign-menu`
+  此前 `@PreAuthorize` 校验的都是各自的 `:edit`（见 `framework/CHANGELOG.md`）。
+
+完整约定见 **CLAUDE.md 4.5.3**。
+
+**容易忘的点**
+
+1. **不要"顺手"改用现成的 `v-access:code` 指令。** 它只有 `mounted` 钩子、且用
+   `el.remove()` 把节点从 Vue 的虚拟 DOM 底下物理摘掉：权限码刷新后不重算
+   （`fetchUserInfo()` 每次刷新页面都回源 `/auth/me`），与 `ElTooltip`、兄弟 `v-if`
+   混用时 patch 行为不可控，而且「整列是否渲染」它根本表达不了。指令本身保留不动
+   （上游 vben 代码，业务方可能在用）。
+2. **不要把 `can('add')` 的结果存进普通 const**——那一刻就求值完了，之后再不更新。
+   模板里直接调用才会被渲染副作用追踪到。
+3. **按钮被容器包着时 `v-if` 挂容器**。角色页的「分配数据权限」外面有 `ElTooltip`，
+   挂在里层 `ElButton` 上会留下一个能 hover 出气泡、却没有按钮的空壳。
+4. **那三个权限点此前是登记了但从未被校验的**：授权树上勾不勾都一样，而授了 `:edit`
+   就等于连带授出了改他人密码 / 分配角色 / 给角色发权限。对齐后**不需要数据迁移**
+   （`seed-rbac.sql` 里早有这三条、ADMIN 已全量授权），但业主自建的只授 `:edit` 的角色
+   要在「分配菜单」里补勾，且**补勾后需重新登录**才生效（权限快照在登录时定格）。
+5. **`packages/effects/system-ui` 原先不依赖 `@describeadmin/access`**，本次补了这条
+   `workspace:*`（`access` 只依赖 preferences/stores/types/utils，不会成环）。
+6. **前端显隐只是体验，不是授权。** 后端 `@PreAuthorize` / `requirePermission` 才是。
+   验收必须包含「拿该用户的 token 直接 curl 接口应当 403」，只看界面藏没藏证明不了什么。
+7. 操作列的固定 `width` 未随可见按钮数变化。只剩「编辑」时那一列偏宽——已知的观感残留，
+   不影响功能；真要收敛得按按钮文案逐页算宽度，性价比不高。
 
 ***
 
