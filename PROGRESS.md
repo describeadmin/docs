@@ -28,6 +28,65 @@
 
 ***
 
+## 2026-09-20：跨模块引用数据 —— `size=200` 假分页 + 授权无法闭环
+
+**症状（两个，同一个根因）**：
+
+1. 用户管理页用 `getRoleListApi({ current: 1, size: 200 })` 填角色下拉。角色超过 200 条
+   就静默丢数据，而且**调大参数修不好**——`PageQuery.MAX_SIZE` 是 500，在入口就夹紧了。
+   `dict/index.vue` 的 `size: 500` 是同一个错的另一个实例。
+2. 那个下拉要 `system:role:list`、部门树要 `system:dept:list`。只授「用户管理」的角色
+   直接 403；补授对方的 `:list`，侧边栏就多出「角色管理」「部门管理」入口。
+   `user/index.vue` 当时用一段单独的 `try/catch` 吞掉 403 绕过去——那是绕行不是修复。
+
+**根因**：`system:role:list` 这一个权限点同时承担「侧边栏是否显示角色管理」与
+「角色列表接口是否放行」两件事。而授权对祖先做闭包（CLAUDE.md 4.5.2），授子必授父，
+所以**换一个权限点也解决不了**——只要它登记在 `sys_menu` 上，授了就会显示。
+
+**方案**：把框架早就在字典上用过的做法（`SysDictDataController.byType` 只要求登录）
+提炼成通用约定，分三档，判据是「通用 `OptionItem` 形状够不够用」。完整约定见
+**CLAUDE.md 4.11**，这里只记结论与容易忘的点。
+
+**改动**
+
+- `framework-common` 新增 `OptionItem`（`api` 包）：平铺与树同一形状，`value` 是 `String`，
+  `MAX_SIZE = 2000` 超限**抛错不截断**。
+- `BaseService.listOptionSource(wrapper, what)`：统一承担「多取一条判超限」，
+  走分页插件不拼 `LIMIT`。生成物与各 Service 都只提供 wrapper。
+- A 档（仅登录）：`GET /api/system/{role,dept,menu}/options`。**不新增任何 `perm_code`，
+  不改 `seed-rbac.sql`，零数据迁移。**
+- B 档：`GET /api/system/role/grantable-menus`（`system:role:list`）——
+  「分配菜单」与「首页」选择器要 `menuType`/`path`，`OptionItem` 覆盖不了，
+  所以由**角色模块**提供，不再调 `/api/system/menu/tree`。
+- `SysDictDataController` 补 `buildListWrapper`（按 `dictType` 精确过滤），
+  字典管理页右面板因此换成真正的服务端分页。
+- codegen：业务模块生成 C 档 `/options`（复用本模块 `:list`，**走 Service 以保留
+  数据权限过滤**）+ 前端 `getXxxOptionsApi()`。spec 新增可选 `labelField`，
+  省略则取第一个 string 字段；一个都没有就两边都不生成。
+
+**容易忘的点**
+
+1. **`SysRole` 没有 `status` 字段**，所以角色选项不标禁用态；`SysDept` 有，
+   停用部门标 `disabled` 而**不过滤掉**——滤掉会让该部门下的用户一打开编辑表单就显示为空，
+   保存一次部门就真没了。
+2. **授权树反过来不能映射 `disabled`**：停用前已被授权的部门会变成勾着却取消不掉，
+   管理员连收回这条数据权限都做不到。
+3. **`useGrantTree` 的 `GrantNode` 现在认 `id` 或 `value` 两种键**（菜单树是 `SysMenu`，
+   部门树是 `OptionItem`）。键与 ElTree 的 `node-key` 对不上时**级联静默失效**——
+   `pathToNode` 返回 `[]`，勾选看着正常、子孙没被带上，提交后重开弹窗才发现。
+4. **各模块自己的 `/tree` 保留不动**：菜单管理页、部门管理页访问自己的数据，本来就闭环。
+5. 跑 `framework-it` 时**必须先 `mvn install`**。不带 `-am` 的话它解析 `.m2` 里的旧 jar，
+   新端点不在其中，`/options` 会落到继承自 `BaseController` 的 `/{id}` 上，
+   报的是 `Failed to convert "options" to Long`（500），看起来像路由写错了。
+
+**未做（有意）**：`menu/index.vue` / `dept/index.vue` 的「上级菜单」「上级部门」选择器
+仍走各自的 `/tree` + `normalizeIds()`。它们是**同模块**访问，没有权限收益；
+而改用 `/options` 要么把 `value` 转回 `Number`（雪花 ID 超 2^53，正是字符串序列化要防的），
+要么把 `types.ts` 里所有 id 的类型从 `number` 改成 `string`——后者是对的，但那是
+一次波及全部视图的独立改动。
+
+***
+
 ## 2026-09-20：角色授权树表达不出「只给列表权限」+ 数据权限越授
 
 **症状**：想给一个角色只授「用户管理」的列表权限（看得到列表、不能增删改），做不到。
@@ -456,16 +515,8 @@ Rolldown 驱动的 `vite@8` 下对同一 CSS 入口重复编译、第二次空�
 
 **权限 / 授权**（本轮明确推后，非遗漏）
 
-- **跨模块下拉仍复用别模块的 `list` 权限点**。用户管理页要填「角色」「部门」两个选择器，
-  调的是 `/system/role` 与 `/system/dept/tree`，于是只授「用户管理」的角色会拿到 403；
-  为了让下拉出数据去授 `system:role:list`，侧边栏又会多出「角色管理」入口——两个都不是
-  想要的。方案是给这类数据单独开 `/options` 端点（返回 id + 显示名的最小形状，
-  **只要求登录、不挂权限点**），范式与措辞照 `SysDictDataController.byType`——
-  框架在**字典**那里已经解决过同一个问题，只是没提炼成通用约定。
-  `user/index.vue:302-306` 现在用单独 try/catch 绕过 403，那是绕行不是修复
-- **`role/index.vue` 自身也踩这个坑**：「分配菜单」弹窗要 `system:menu:list`、
-  「分配数据权限」弹窗要 `system:dept:list`。比上一条更难收口——同一页的「首页」选择器
-  需要 `menuType`/`path` 来判断哪些节点可选，通用的 `OptionItem` 形状覆盖不了
+- ~~**跨模块下拉仍复用别模块的 `list` 权限点**~~ **已解决**，见下方「跨模块引用数据」章节。
+  约定落在 CLAUDE.md 4.11
 - **按钮级 `v-access` 一个都没用上**。权限点已随 `/api/auth/me` 下发、
   `hasAccessByCodes` / `v-access` 指令都是通的，但 `system-ui` 的所有视图都没用——
   「新增/编辑/删除」按钮对任何能进入页面的人都可见，只靠后端 403 挡。
