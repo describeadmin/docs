@@ -575,8 +575,11 @@ Tailwind v4（`@import 'tailwindcss'`）把自己生成的全部工具类放进
 codegen 生成的 Java 代码用 Lombok 消除逐字段样板：
 
 - **Entity**：类上 `@Getter` / `@Setter`，不手写访问器
-- **Controller**：类上 `@RequiredArgsConstructor`，不手写注入构造器
-- Mapper / Service 模板不涉及
+- **Controller / Service**：类上 `@RequiredArgsConstructor`，不手写注入构造器。
+  Service 的生成物本身没有依赖（Mapper 由 `BaseService` 基类持有），注解是给业务方
+  后续加 `private final` 字段预留的注入通道；空类上 Lombok 给出的是无参构造器，
+  与不写注解时的隐式默认构造器等价。**不要**因为"这个注解眼下没用"把它删掉
+- **Mapper**：接口，模板不涉及
 
 依赖由 `describeadmin-archetype` 生成的业务 `pom.xml` 自带
 （`org.projectlombok:lombok`，`<optional>true</optional>`，**不写版本**——由

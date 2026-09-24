@@ -316,7 +316,7 @@ public interface NotifyChannel {
 好处是框架升级大多数情况下改的是基类（属于 Platform 层，版本化发布），业务方生成的"薄"代码基本不需要跟着大改，从源头上减少了升级摩擦。
 
 **生成物用 Lombok，框架源码不用（2026-09 定）。** 生成的 Entity 用 `@Getter`/`@Setter`、
-Controller 用 `@RequiredArgsConstructor`，去掉逐字段的 getter/setter 与手写注入构造器——
+Controller 与 Service 用 `@RequiredArgsConstructor`，去掉逐字段的 getter/setter 与手写注入构造器——
 这些是没人维护的机械样板，正是"薄"的方向。而框架自身的 `BaseEntity`/各 starter/`SysUser`
 继续手写访问器：注解处理器绑 javac 内部非公开 API，是"换新 JDK 可能编不过"的变量，与
 「任意 JDK ≥ 17 都能直接构建**框架本身**」这条硬承诺冲突（同一理由见 2.2.2 弃用
